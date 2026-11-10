@@ -82,7 +82,7 @@ O objetivo é digitar só `alunos` no dia a dia, sem `academico.`.
 
 Ordem de preferência:
 1. **Conectar com o usuário do schema**: `SELECT * FROM alunos` funciona direto.
-2. **Sinônimo privado** para cada tabela, quando o usuário precisa acessar outro schema. Use o script `sinonimos_academico.sql`.
+2. **Sinônimo privado** para cada tabela, quando o usuário precisa acessar outro schema. Gere um script com um `CREATE OR REPLACE SYNONYM` por tabela, seguindo o padrão abaixo.
 3. **`ALTER SESSION SET CURRENT_SCHEMA = ACADEMICO`** para uma sessão pontual.
 4. **Trigger de logon**: funciona, mas é difícil de depurar e pode impedir o login se houver erro.
 

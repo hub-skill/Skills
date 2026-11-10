@@ -55,4 +55,4 @@ Se não conseguir executar, diga isso ao usuário. Não afirme que os testes pas
 
 ## Passo 6: entregar
 
-Salve os arquivos em `/mnt/user-data/outputs` e apresente-os. Informe o nível de proteção adotado, as suposições feitas e o que ficou pendente.
+Salve os arquivos no diretório indicado pelo usuário (ou, se ele não indicar, no diretório atual do projeto) e apresente-os. Informe o nível de proteção adotado, as suposições feitas e o que ficou pendente.
