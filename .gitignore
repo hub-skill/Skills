@@ -1,3 +1,13 @@
 # Saídas de build do .NET
 bin/
 obj/
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.env
+*.egg-info/

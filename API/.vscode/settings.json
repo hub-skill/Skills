@@ -1,0 +1,30 @@
+{
+  // Interpretador do ambiente virtual do template Python (Python 3.13).
+  "python.defaultInterpreterPath": "${workspaceFolder}/assets/python/.venv/Scripts/python.exe",
+
+  // Aba Testing: pytest rodando a partir de assets/python.
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.cwd": "${workspaceFolder}/assets/python",
+  "python.testing.pytestArgs": ["tests", "--no-cov"],
+
+  // Lint e formatação com Ruff ao salvar.
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
+  },
+  "ruff.nativeServer": "on",
+
+  // Pylance usando assets/python como raiz de importação (pacote "app").
+  "python.analysis.extraPaths": ["${workspaceFolder}/assets/python"],
+
+  "files.exclude": {
+    "**/.venv": true,
+    "**/__pycache__": true,
+    "**/.pytest_cache": true,
+    "**/.mypy_cache": true,
+    "**/.ruff_cache": true
+  },
+  "python.terminal.useEnvFile": true
+}

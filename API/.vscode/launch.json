@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: API (uvicorn --reload)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--reload", "--port", "8000"],
+      "cwd": "${workspaceFolder}/assets/python",
+      "envFile": "${workspaceFolder}/assets/python/.env",
+      "python": "${workspaceFolder}/assets/python/.venv/Scripts/python.exe",
+      "justMyCode": true
+    },
+    {
+      "name": "Python: pytest (depurar)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests", "--no-cov", "-q"],
+      "cwd": "${workspaceFolder}/assets/python",
+      "python": "${workspaceFolder}/assets/python/.venv/Scripts/python.exe",
+      "justMyCode": false
+    }
+  ]
+}

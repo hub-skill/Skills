@@ -1,0 +1,16 @@
+{
+  "version": "2.0.0",
+  "options": { "cwd": "${workspaceFolder}/assets/python" },
+  "tasks": [
+    { "label": "Python: ruff check", "type": "shell", "command": ".venv/Scripts/ruff check . --exclude .venv", "problemMatcher": [] },
+    { "label": "Python: ruff format --check", "type": "shell", "command": ".venv/Scripts/ruff format --check . --exclude .venv", "problemMatcher": [] },
+    { "label": "Python: mypy", "type": "shell", "command": ".venv/Scripts/mypy app", "problemMatcher": [] },
+    { "label": "Python: pytest (com cobertura)", "type": "shell", "command": ".venv/Scripts/pytest", "group": { "kind": "test", "isDefault": true }, "problemMatcher": [] },
+    {
+      "label": "Python: verificar tudo",
+      "dependsOrder": "sequence",
+      "dependsOn": ["Python: ruff check", "Python: ruff format --check", "Python: mypy", "Python: pytest (com cobertura)"],
+      "problemMatcher": []
+    }
+  ]
+}
