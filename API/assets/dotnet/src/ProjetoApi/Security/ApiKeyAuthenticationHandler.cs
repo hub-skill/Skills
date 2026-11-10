@@ -15,7 +15,7 @@ public sealed class ApiKeyAuthenticationHandler(
     ApiSettings settings)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    public const string Scheme = "ApiKey";
+    public const string SchemeName = "ApiKey";
     public const string Header = "X-API-Key";
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
@@ -33,8 +33,8 @@ public sealed class ApiKeyAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.Fail("Chave inválida"));
         }
 
-        var identidade = new ClaimsIdentity(Scheme);
-        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identidade), Scheme);
+        var identidade = new ClaimsIdentity(SchemeName);
+        var ticket = new AuthenticationTicket(new ClaimsPrincipal(identidade), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
 }

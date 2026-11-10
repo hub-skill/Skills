@@ -38,9 +38,9 @@ builder.Services.AddValidatorsFromAssemblyContaining<EntradaTextoValidator>();
 
 // Autenticação por API key. Por padrão, todas as rotas exigem autenticação.
 builder.Services
-    .AddAuthentication(ApiKeyAuthenticationHandler.Scheme)
+    .AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
-        ApiKeyAuthenticationHandler.Scheme, _ => { });
+        ApiKeyAuthenticationHandler.SchemeName, _ => { });
 builder.Services.AddAuthorization(opcoes =>
     opcoes.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
 

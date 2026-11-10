@@ -3,8 +3,11 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace ProjetoApi.Errors;
 
-public sealed class ErroDeDominioHandler(ILogger<ErroDeDominioHandler> logger) : IExceptionHandler
+public sealed partial class ErroDeDominioHandler(ILogger<ErroDeDominioHandler> logger) : IExceptionHandler
 {
+    [LoggerMessage(Level = LogLevel.Error, Message = "erro não tratado")]
+    private static partial void LogErroNaoTratado(ILogger logger, Exception exception);
+
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
@@ -12,7 +15,7 @@ public sealed class ErroDeDominioHandler(ILogger<ErroDeDominioHandler> logger) :
     {
         var (status, codigo, mensagem) = exception switch
         {
-            ErroDeDominio erro => (erro.StatusCode, erro.Codigo, erro.Mensagem),
+            ErroDeDominioException erro => (erro.StatusCode, erro.Codigo, erro.Mensagem),
             _ => (StatusCodes.Status500InternalServerError, "erro_interno",
                   "Erro interno. Informe o request_id ao suporte.")
         };
@@ -20,7 +23,7 @@ public sealed class ErroDeDominioHandler(ILogger<ErroDeDominioHandler> logger) :
         if (status == StatusCodes.Status500InternalServerError)
         {
             // Stack trace apenas nos logs internos; o cliente recebe mensagem genérica.
-            logger.LogError(exception, "erro não tratado");
+            LogErroNaoTratado(logger, exception);
         }
 
         var problema = new ProblemDetails { Status = status, Title = mensagem };

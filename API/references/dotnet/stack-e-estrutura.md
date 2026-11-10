@@ -21,7 +21,7 @@
 | Logs | `ILogger` com `AddJsonConsole` (incluso) | `Serilog` opcional |
 | Métricas e tracing | `OpenTelemetry.Extensions.Hosting`, `OpenTelemetry.Instrumentation.AspNetCore`, `OpenTelemetry.Exporter.Prometheus.AspNetCore` | Exporta `/metrics` |
 | Health checks | `Microsoft.Extensions.Diagnostics.HealthChecks` (incluso) | `MapHealthChecks` com predicado para live e ready |
-| Documentação | `Microsoft.AspNetCore.OpenApi` (incluso) + `Scalar.AspNetCore` | Swagger UI via Swashbuckle é alternativa |
+| Documentação | `Microsoft.AspNetCore.OpenApi` (pacote NuGet) + `Scalar.AspNetCore` | Swagger UI via Swashbuckle é alternativa |
 | Versionamento | `Asp.Versioning.Http` | Versão na rota |
 | Serialização | `System.Text.Json` | Source generators para desempenho |
 | Testes unitários | xUnit | Padrão da comunidade |
@@ -55,7 +55,7 @@ ProjetoApi/
 │       │   ├── ApiKeyAuthenticationHandler.cs
 │       │   └── ApiKeyDefaults.cs
 │       ├── Errors/
-│       │   ├── ErroDeDominio.cs
+│       │   ├── ErroDeDominioException.cs
 │       │   └── ErroDeDominioHandler.cs
 │       ├── Services/
 │       │   ├── ITransformacaoService.cs
@@ -113,8 +113,8 @@ ProjetoApi/
 - Retorno tipado com `Results<Ok<SaidaTexto>, ProblemHttpResult>`.
 
 **Erros (`Errors/`)**
-- `ErroDeDominio : Exception` com status e código, como no Python.
-- Implementação de `IExceptionHandler` que converte `ErroDeDominio` e exceções inesperadas em `ProblemDetails`, com `extensions["code"]` e `traceId`.
+- `ErroDeDominioException : Exception` com status e código, como no Python.
+- Implementação de `IExceptionHandler` que converte `ErroDeDominioException` e exceções inesperadas em `ProblemDetails`, com `extensions["code"]` e `traceId`.
 - `AddProblemDetails` configurado para que erros de framework (404, 413, 429) também sigam o formato.
 - Exceção inesperada: log com stack trace, resposta 500 genérica.
 
