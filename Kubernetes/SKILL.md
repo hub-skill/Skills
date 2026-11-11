@@ -28,8 +28,10 @@ Se ainda não houver imagem, use a skill **docker** primeiro.
 
 ## Passo 3: gerar a partir dos templates
 
-Copie `assets/` para `k8s/` do projeto (`assets/base` → `k8s/base`, `assets/overlays` → `k8s/overlays`) e troque
-`projeto-api` pelo nome da API em todos os arquivos.
+Rode `scripts/preparar-k8s.ps1 -Projeto <pasta> -Nome <nome-da-api> -Linguagem python|dotnet`. Ele copia `assets/`
+para `k8s/` do projeto trocando `projeto-api` pelo nome da API e gera `config.env` e `segredos.env` a partir do
+`.env.docker` da skill docker (que já passou pelo container), mostrando só os nomes das chaves. Sem `.env.docker`,
+copie à mão e use os `config-*.env.example`.
 
 Ao adaptar:
 
@@ -56,10 +58,19 @@ Se não conseguir executar, diga isso. Não afirme que o deploy funciona sem ter
 
 ### Situação dos templates
 
-- **NÃO validados ainda** (11/11/2026). As imagens que eles usam foram validadas pela skill docker, mas falta ligar
-  o Kubernetes no Docker Desktop e rodar o roteiro de `references/validacao-local.md` com as APIs reais (Motor de
-  Crédito Python e .NET): rollout, probes com `Host: localhost`, port-forward, readiness 503, `rollout restart` e
-  kubeconform. Registre aqui o resultado antes de usá-los como base sem ressalvas.
+- **Validados** em 11/11/2026 no Kubernetes v1.36.1 do Docker Desktop 29.9.3 (modo kind), com as APIs reais do
+  Motor de Crédito (Python e .NET) e PostgreSQL/Oracle no Windows via `host.docker.internal`:
+  - kubeconform 5/5 válidos; dry-run no servidor sem erros nem avisos de Pod Security `restricted`;
+  - rollout concluído, pods `1/1` com `RESTARTS 0` (probes com `Host: localhost` funcionando);
+  - pelo port-forward: triagem real `200` igual à do container, `401` sem chave; `testar-api` do .NET 8/8;
+  - securityContext aplicado (drop ALL, read-only, seccomp, não root; Python UID 10001);
+  - `rollout restart` das duas APIs com tráfego contínuo pelo Service: **622 chamadas, 0 falhas**;
+  - versão com banco inacessível: pod novo `0/1` sem reinício, antigo seguiu atendendo; `rollout undo` limpo.
+- Correções que o teste exigiu (já nos templates): health/metrics fora do rate limit no .NET (o 1º teste de troca
+  deu 169 respostas 429 no `/health/live`); `Bancos__Oracle__DataSource` no exemplo .NET; namespace criado antes do
+  dry-run; importação da imagem no modo kind.
+- **Não validado aqui**: HPA (sem metrics-server), PDB e NetworkPolicy (um nó, CNI sem NetworkPolicy) e o overlay de
+  produção (precisa de registro e cofre reais).
 
 ## Passo 5: entregar
 

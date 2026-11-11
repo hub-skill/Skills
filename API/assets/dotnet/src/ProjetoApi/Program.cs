@@ -127,9 +127,10 @@ if (settings.EnableDocs)
 }
 
 // Health checks anônimos; métricas devem ficar na rede interna.
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous();
-app.MapHealthChecks("/health/ready").AllowAnonymous();
-app.MapPrometheusScrapingEndpoint("/metrics").AllowAnonymous();
+// Fora do rate limit: no Kubernetes as probes saem todas do IP do nó; um 429 na liveness reiniciaria o pod.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous().DisableRateLimiting();
+app.MapHealthChecks("/health/ready").AllowAnonymous().DisableRateLimiting();
+app.MapPrometheusScrapingEndpoint("/metrics").AllowAnonymous().DisableRateLimiting();
 
 app.MapTransformacaoV1();
 

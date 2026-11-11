@@ -101,6 +101,13 @@ public sealed class ComportamentoDaApiTests(ApiFactory fabrica) : IClassFixture<
         Assert.Equal(HttpStatusCode.TooManyRequests, bloqueada.StatusCode);
         Assert.Equal("60", bloqueada.Headers.RetryAfter?.ToString());
         Assert.Equal("http_429", (await Json(bloqueada)).GetProperty("code").GetString());
+
+        // Com o limite estourado, health e métricas continuam respondendo: no Kubernetes as probes saem todas do
+        // IP do nó, e um 429 na liveness reiniciaria o pod.
+        foreach (var rota in new[] { "/health/live", "/health/ready", "/metrics" })
+        {
+            Assert.Equal(HttpStatusCode.OK, (await cliente.GetAsync(new Uri(rota, UriKind.Relative))).StatusCode);
+        }
     }
 
     [Fact]

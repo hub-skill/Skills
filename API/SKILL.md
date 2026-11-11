@@ -104,6 +104,7 @@ Se não conseguir executar, diga isso ao usuário. Não afirme que os testes pas
 
 - Drivers de banco podem trazer dependências transitivas vulneráveis (ex.: `Oracle.ManagedDataAccess.Core` traz `System.Security.Cryptography.Pkcs` 8.0.1). Com `TreatWarningsAsErrors`, o build falha com NU1902/NU1903. Corrija fixando a versão no `Directory.Packages.props` com `<CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>` e um `PackageVersion` corrigido; nunca desligue o aviso.
 - Npgsql 10 em container Linux (imagem chiseled): o padrão `GssEncryptionMode=Prefer` tenta carregar a `libgssapi_krb5.so.2`, que não existe, e registra `Cannot load library libgssapi_krb5.so.2`. Sem Kerberos, use `GssEncryptionMode.Disable` (já no módulo `bancos`; revalidado com os 67 testes em 11/11/2026).
+- O `GlobalLimiter` do rate limit vale para **todos** os endpoints, inclusive `/health/*` e `/metrics`. No Kubernetes as probes saem do IP do nó; um 429 na liveness reinicia o pod saudável (visto no teste de troca: 169 respostas 429). O template usa `.DisableRateLimiting()` nesses três, e o teste de 429 confere que eles seguem 200 com o limite estourado (revalidado: 30 e 67 testes, 11/11/2026).
 - Atualizações do .NET SDK pelo Windows Update deixam o SDK inconsistente durante a instalação (erro MSB4014/MSB4236 de *workload manifest*). Não é erro do projeto: espere o instalador terminar e rode de novo.
 
 ## Passo 6: entregar

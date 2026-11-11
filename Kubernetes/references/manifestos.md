@@ -30,6 +30,13 @@ k8s/
     readiness.
 - **Header `Host: localhost` nas probes**: as duas APIs filtram o Host (`ALLOWED_HOSTS` / `Api__AllowedHosts`) e
   o kubelet manda o IP do pod. Sem o header, a probe recebe 400 e o pod reinicia em loop.
+- **Health fora do rate limit**: as probes saem todas do IP do nó. Se o limite por IP valer para `/health/*`, um
+  pico de qualquer coisa no nó faz a liveness receber 429 e o Kubernetes reinicia um pod saudável. No .NET, o
+  `GlobalLimiter` pega tudo: use `.DisableRateLimiting()` em `/health/live`, `/health/ready` e `/metrics` (o template
+  da criar-api já faz). No Python (slowapi), o limite fica só nas rotas decoradas.
+- **Python: `/health/ready` com o banco fora demora ~5 s** (espera do pool) e a readiness tem `timeoutSeconds: 3`:
+  o kubelet registra `context deadline exceeded` em vez de 503. O efeito é o mesmo (pod fora do Service). O .NET
+  responde 503 na hora.
 
 **Encerramento sem perder requisição**
 - `preStop: sleep 5` (ação nativa, Kubernetes 1.30+). A imagem .NET chiseled não tem shell, então
