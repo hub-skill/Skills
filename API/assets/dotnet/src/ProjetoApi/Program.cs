@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication;
@@ -29,8 +30,10 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ApiSettings>>
 
 var settings = builder.Configuration.GetSection(ApiSettings.SectionName).Get<ApiSettings>()!;
 
+const long TamanhoMaximoDoCorpo = 64 * 1024; // o proxy deve limitar também
+
 builder.Logging.AddJsonConsole();
-builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = 64 * 1024);
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = TamanhoMaximoDoCorpo);
 
 // Serviços e validação
 builder.Services.AddSingleton<ITransformacaoService, TransformacaoService>();
@@ -50,7 +53,7 @@ builder.Services.AddRateLimiter(opcoes =>
     opcoes.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     opcoes.OnRejected = (contexto, _) =>
     {
-        contexto.HttpContext.Response.Headers["Retry-After"] = "60";
+        contexto.HttpContext.Response.Headers.RetryAfter = "60";
         return ValueTask.CompletedTask;
     };
     opcoes.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(contexto =>
@@ -58,14 +61,19 @@ builder.Services.AddRateLimiter(opcoes =>
             contexto.Connection.RemoteIpAddress?.ToString() ?? "desconhecido",
             _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 60,
+                PermitLimit = settings.RateLimitPorMinuto,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             }));
 });
 
-// Erros padronizados (RFC 7807)
-builder.Services.AddProblemDetails();
+// Erros padronizados (RFC 7807), sempre com "code" e "request_id", inclusive 401, 404 e 429.
+builder.Services.AddProblemDetails(opcoes => opcoes.CustomizeProblemDetails = contexto =>
+{
+    var status = contexto.ProblemDetails.Status ?? contexto.HttpContext.Response.StatusCode;
+    contexto.ProblemDetails.Extensions.TryAdd("code", string.Create(CultureInfo.InvariantCulture, $"http_{status}"));
+    contexto.ProblemDetails.Extensions.TryAdd("request_id", contexto.HttpContext.TraceIdentifier);
+});
 builder.Services.AddExceptionHandler<ErroDeDominioHandler>();
 
 // Proxies: adicione os IPs confiáveis em KnownProxies. Sem isso, X-Forwarded-* é ignorado.
@@ -90,8 +98,20 @@ builder.Services.AddOpenTelemetry()
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseStatusCodePages(); // 401, 404 e 429 também saem no formato ProblemDetails
 app.UseHostFiltering();
 app.UseMiddleware<SecurityHeadersMiddleware>();
+app.Use(async (contexto, proximo) =>
+{
+    // O Kestrel também limita; esta checagem responde 413 no formato padrão de erro
+    // (e vale no TestServer dos testes, que não aplica o limite do Kestrel).
+    if (contexto.Request.ContentLength > TamanhoMaximoDoCorpo)
+    {
+        throw new CorpoMuitoGrandeException();
+    }
+
+    await proximo(contexto);
+});
 app.UseForwardedHeaders();
 app.UseCors();
 app.UseRateLimiter();
@@ -101,8 +121,9 @@ app.UseAuthorization();
 // Documentação apenas quando habilitada (desligada em produção por padrão).
 if (settings.EnableDocs)
 {
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    // AllowAnonymous: sem isso a política padrão (autenticação obrigatória) bloqueia a documentação com 401.
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference().AllowAnonymous();
 }
 
 // Health checks anônimos; métricas devem ficar na rede interna.

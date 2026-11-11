@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: projeto-api
+  labels:
+    app.kubernetes.io/name: projeto-api
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: projeto-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0   # troca de versão sem derrubar capacidade
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: projeto-api
+      annotations:
+        # Para Prometheus com descoberta por anotação. /metrics nunca deve sair do cluster.
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      automountServiceAccountToken: false   # a API não fala com a API do Kubernetes
+      enableServiceLinks: false
+      # Maior que o graceful timeout da aplicação (gunicorn 20 s / ASP.NET 30 s padrão) + preStop.
+      terminationGracePeriodSeconds: 40
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: api
+          image: projeto-api:0.1.0   # tag fixa; o overlay troca pelo registro real
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: projeto-api-config
+            - secretRef:
+                name: projeto-api-segredos
+          resources:
+            requests:
+              cpu: 250m       # o HPA calcula a % sobre este valor
+              memory: 256Mi
+            limits:
+              memory: 512Mi   # sem limite de CPU: evita throttling; o request garante a fatia mínima
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          # As APIs filtram o header Host (ALLOWED_HOSTS / Api__AllowedHosts). O kubelet manda o IP do pod
+          # como Host: sem o header abaixo as probes recebem 400 e o pod é reiniciado em loop.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 2
+            failureThreshold: 30   # até 60 s para subir
+          livenessProbe:
+            httpGet:
+              path: /health/live   # nunca consulta o banco: banco fora não pode reiniciar o pod
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready   # consulta o banco: sem banco, o pod sai do Service
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              # Dá tempo de o Service tirar o pod da rotação antes de o processo receber SIGTERM.
+              sleep:
+                seconds: 5
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp   # readOnlyRootFilesystem: só /tmp é gravável
+          emptyDir:
+            sizeLimit: 64Mi
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway   # espalha réplicas entre nós quando houver mais de um
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: projeto-api

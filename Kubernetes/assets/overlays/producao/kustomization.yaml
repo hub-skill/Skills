@@ -1,0 +1,21 @@
+# MODELO de produção (cluster genérico: AKS, EKS, GKE, on-premise). Ajuste os <marcadores>.
+# Conferir antes:  kubectl kustomize k8s/overlays/producao | kubeconform -strict -summary
+# Aplicar:         kubectl apply -k k8s/overlays/producao
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: projeto-api
+resources:
+  - ../../base   # o namespace de produção é criado pela equipe do cluster (com as labels de Pod Security)
+
+configMapGenerator:
+  - name: projeto-api-config
+    envs: [config.env]
+
+# Segredos em produção: NÃO use arquivo local. Use o cofre do ambiente (External Secrets Operator com
+# Azure Key Vault / AWS Secrets Manager / GCP Secret Manager / Vault, ou Sealed Secrets), criando um
+# Secret chamado projeto-api-segredos com as mesmas chaves do segredos.env.example.
+
+images:
+  - name: projeto-api
+    newName: <registro>/projeto-api   # ex.: meuacr.azurecr.io/projeto-api
+    newTag: <versão>                  # tag imutável (versão ou SHA do commit), nunca latest

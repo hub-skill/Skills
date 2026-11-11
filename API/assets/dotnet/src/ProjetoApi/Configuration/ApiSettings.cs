@@ -18,5 +18,9 @@ public sealed class ApiSettings
     [Range(1, 60)]
     public double RequestTimeoutSeconds { get; init; } = 5;
 
+    // Requisições por minuto, por IP. Configurável (Api__RateLimitPorMinuto) e testável.
+    [Range(1, 100_000)]
+    public int RateLimitPorMinuto { get; init; } = 60;
+
     public bool EnableDocs { get; init; }
 }

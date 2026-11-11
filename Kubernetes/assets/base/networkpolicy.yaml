@@ -1,0 +1,27 @@
+# Entrada só na porta da API; saída só para DNS e bancos.
+# Só tem efeito se o cluster tiver um CNI com NetworkPolicy (Calico, Cilium...). O Kubernetes do
+# Docker Desktop aceita o objeto mas NÃO o aplica: valide o bloqueio num cluster real.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: projeto-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: projeto-api
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - ports:
+        - port: 8080
+          protocol: TCP
+  egress:
+    - ports:   # DNS
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:   # bancos: apague o que não usar e, em produção, restrinja com ipBlock/namespaceSelector
+        - port: 5432
+          protocol: TCP
+        - port: 1521
+          protocol: TCP

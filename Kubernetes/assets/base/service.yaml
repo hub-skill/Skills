@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: projeto-api
+  labels:
+    app.kubernetes.io/name: projeto-api
+spec:
+  type: ClusterIP   # só dentro do cluster; exposição externa via Ingress/Gateway do ambiente
+  selector:
+    app.kubernetes.io/name: projeto-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

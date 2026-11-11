@@ -1,0 +1,46 @@
+# Kubernetes do Docker Desktop (modo kubeadm: as imagens do docker build já ficam visíveis ao cluster).
+# Aplicar:  kubectl apply -k k8s/overlays/local
+# Acessar:  kubectl -n projeto-api port-forward svc/projeto-api 8080:80   ->  http://localhost:8080
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: projeto-api
+resources:
+  - namespace.yaml
+  - ../../base
+
+# Configuração NÃO secreta. Copie config-python.env.example ou config-dotnet.env.example para config.env.
+configMapGenerator:
+  - name: projeto-api-config
+    envs: [config.env]
+
+# Segredos: arquivo local, NUNCA versionado (está no .gitignore e no .dockerignore). Só as variáveis que a
+# API usa (nada de *_ADMIN_*). O sufixo de hash gerado faz o Deployment reiniciar quando o segredo muda.
+secretGenerator:
+  - name: projeto-api-segredos
+    envs: [segredos.env]
+
+images:
+  - name: projeto-api
+    newTag: 0.1.0
+
+patches:
+  # Uma réplica e sem HPA (o Docker Desktop não traz metrics-server).
+  - target: {kind: Deployment, name: projeto-api}
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target: {kind: HorizontalPodAutoscaler, name: projeto-api}
+    patch: |-
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: projeto-api
+  - target: {kind: PodDisruptionBudget, name: projeto-api}
+    patch: |-
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: projeto-api

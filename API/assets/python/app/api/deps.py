@@ -14,9 +14,7 @@ def verificar_api_key(
 ) -> None:
     """Compara a chave em tempo constante, para evitar ataques de temporização."""
     chave_esperada = settings.api_key.get_secret_value().encode("utf-8")
-    if chave_recebida is None or not secrets.compare_digest(
-        chave_recebida.encode("utf-8"), chave_esperada
-    ):
+    if chave_recebida is None or not secrets.compare_digest(chave_recebida.encode("utf-8"), chave_esperada):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Não autorizado",

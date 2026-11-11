@@ -37,4 +37,11 @@ public sealed class ApiKeyAuthenticationHandler(
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identidade), SchemeName);
         return Task.FromResult(AuthenticateResult.Success(ticket));
     }
+
+    // 401 com o esquema esperado, como pede a especificação HTTP.
+    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+    {
+        Response.Headers.WWWAuthenticate = SchemeName;
+        return base.HandleChallengeAsync(properties);
+    }
 }

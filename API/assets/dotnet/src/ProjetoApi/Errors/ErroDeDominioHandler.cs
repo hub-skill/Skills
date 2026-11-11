@@ -16,6 +16,8 @@ public sealed partial class ErroDeDominioHandler(ILogger<ErroDeDominioHandler> l
         var (status, codigo, mensagem) = exception switch
         {
             ErroDeDominioException erro => (erro.StatusCode, erro.Codigo, erro.Mensagem),
+            // JSON malformado ou corpo ilegível: 400, nunca 500.
+            BadHttpRequestException erro => (erro.StatusCode, "requisicao_invalida", "Requisição inválida."),
             _ => (StatusCodes.Status500InternalServerError, "erro_interno",
                   "Erro interno. Informe o request_id ao suporte.")
         };

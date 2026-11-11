@@ -7,6 +7,26 @@ description: Convenções de nomenclatura, tipos de dados e uso de sinônimos pa
 
 Esta skill é exclusiva para **Oracle Database**. Sintaxes como `CREATE SCHEMA IF NOT EXISTS`, `TIMESTAMP` sem precisão, `COMMENT ON` com aspas simples de outros SGBDs não se aplicam aqui. No Oracle, um schema é um usuário do banco.
 
+## 0. Projeto Motor de Crédito: onde ficam as tabelas
+
+Nas tarefas do projeto Motor de Crédito (pasta `c:\Felipe\Programacao\Python\APIs\Motor de credito`), use sempre:
+
+| Item | Valor |
+|---|---|
+| Banco | Oracle 21c XE local, banco plugável **`XEPDB1`** (`localhost:1521/XEPDB1`), nunca o CDB `XE` |
+| Schema | **`MOTOR_CREDITO`**: dono das tabelas, *schema-only* (sem login) |
+| Usuário da aplicação | `MOTOR_APP`: só `CREATE SESSION` + grants nas tabelas, acessa por sinônimos privados |
+| Administrador | `SYSTEM`: cria tabelas, grants e sinônimos |
+| Tabelas existentes | `MOTOR_CREDITO.SANCOES` (CEIS + CNEP), `MOTOR_CREDITO.PEPS` |
+| Credenciais | `.env` da pasta do projeto (`ORACLE_*`, `ORACLE_ADMIN_*`) |
+
+- Crie toda tabela nova como **`motor_credito.<tabela>`** (conectado como `SYSTEM`) e, em seguida:
+  `GRANT SELECT, INSERT, UPDATE, DELETE ON motor_credito.<tabela> TO motor_app` e
+  `CREATE OR REPLACE SYNONYM motor_app.<tabela> FOR motor_credito.<tabela>`.
+- **Consultas fora da aplicação** (SQL Developer, SQL*Plus como `SYSTEM`) precisam do schema: `select * from motor_credito.peps`. Só o `MOTOR_APP` dispensa o prefixo, por causa dos sinônimos.
+- No SQL Developer, use a conexão **`Motor_Credito`** (SYSTEM, *Nome do Serviço* `XEPDB1`). A conexão `teste` usa SID `xe` (CDB raiz) e dá `ORA-00942` nas tabelas do projeto. Conectado como `SYSTEM`, as tabelas ficam em *Outros Usuários → MOTOR_CREDITO → Tabelas*; conectado como `MOTOR_APP`, aparecem em *Sinônimos*.
+- O equivalente no PostgreSQL está na skill postgresql-naming-schemas (schema `credito`).
+
 ## 1. Regras de nomenclatura
 
 - snake_case minúsculo com nomes completos, sem abreviações: `data_nascimento`, não `dt_nasc`.
@@ -48,6 +68,7 @@ Sinônimos não recebem prefixo. O objetivo é que a consulta fique natural: `SE
 ## 2. Tipos de dados
 
 - `VARCHAR2(n)` em vez de `VARCHAR`. Defina o tamanho sempre.
+- CPF, CNPJ e documentos: sempre **`VARCHAR2(20)`**. Nunca `CHAR(11)`/`CHAR(14)` nem `NUMBER`: tipos numéricos perdem zeros à esquerda, e tamanho fixo não aceita máscara nem o CNPJ alfanumérico.
 - `NUMBER(p,s)` para decimais e inteiros. Para inteiros de identidade, use `NUMBER`.
 - `DATE` já carrega data e hora. Use `TIMESTAMP` quando precisar de frações de segundo.
 - `TIMESTAMP WITH TIME ZONE` quando o fuso horário importa.
@@ -60,7 +81,7 @@ Sinônimos não recebem prefixo. O objetivo é que a consulta fique natural: `SE
 CREATE TABLE academico.alunos (
     id                NUMBER GENERATED ALWAYS AS IDENTITY,
     nome              VARCHAR2(120)  NOT NULL,
-    cpf               CHAR(11)       NOT NULL,
+    cpf               VARCHAR2(20)   NOT NULL,
     data_nascimento   DATE           NOT NULL,
     email             VARCHAR2(255),
     situacao          VARCHAR2(20)   DEFAULT 'ATIVO' NOT NULL,
@@ -122,5 +143,6 @@ SELECT synonym_name, table_owner, table_name
 - [ ] Nome dentro do limite de bytes da versão do Oracle
 - [ ] Restrições e índices com prefixo padrão
 - [ ] Tipos `VARCHAR2`, `NUMBER`, `DATE` ou `TIMESTAMP` com tamanho definido
+- [ ] CPF, CNPJ e documentos em `VARCHAR2(20)`
 - [ ] `COMMENT ON` para tabela e colunas
 - [ ] Sinônimo privado criado e `GRANT` emitido para o usuário

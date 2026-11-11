@@ -1,0 +1,25 @@
+# Escala por CPU. Precisa do metrics-server no cluster (o Docker Desktop não traz; ver references/validacao-local.md).
+# ATENÇÃO ao banco: conexões no banco = maxReplicas x processos por pod x pool máximo.
+# Ex.: 6 x 1 x 5 = 30 conexões. Some todas as APIs que usam o mesmo banco e fique abaixo do
+# max_connections (PostgreSQL: 100 por padrão) com folga para administração e cargas.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: projeto-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: projeto-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300   # evita sobe-e-desce em picos curtos

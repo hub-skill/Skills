@@ -1,0 +1,30 @@
+# Segredos: nunca entram no contexto de build (nem em camada intermediária).
+.env
+.env.*
+!.env.example
+segredos.env
+*.pem
+*.key
+
+# Ambiente e caches locais
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+
+# Fora da imagem
+.git/
+.github/
+.vscode/
+tests/
+banco/
+dados_cgu/
+k8s/
+*.pdf
+Dockerfile
+.dockerignore

@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: projeto-api
+  labels:
+    # Recusa pods que não seguem o perfil "restricted" (não root, sem privilégios, seccomp...).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted

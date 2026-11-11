@@ -33,6 +33,7 @@ projeto/
 │   ├── core/
 │   │   ├── config.py         # Settings (pydantic-settings)
 │   │   ├── exceptions.py     # exceções de domínio
+│   │   ├── limiter.py        # slowapi (Redis com várias instâncias)
 │   │   └── logging.py        # logs JSON
 │   ├── api/
 │   │   ├── deps.py           # verificação de API key
@@ -41,8 +42,6 @@ projeto/
 │   │   └── texto.py          # EntradaTexto, SaidaTexto
 │   ├── services/
 │   │   └── transformacao.py  # regra de negócio (função pura)
-│   └── middleware/
-│       └── seguranca.py      # headers, limite de corpo
 ├── tests/
 │   ├── unit/
 │   ├── integration/
@@ -51,7 +50,8 @@ projeto/
 ├── pyproject.toml            # dependências, ruff, mypy, pytest
 ├── uv.lock                   # versões fixas
 ├── Dockerfile
-└── README.md
+├── README.md
+└── DOCUMENTACAO.md          # documentação de uso (modelo em assets/python)
 ```
 
 ### 2.3 Componentes principais
@@ -76,7 +76,9 @@ projeto/
 
 **Rota (`api/v1/routes.py`)**
 - `POST /api/v1/transformar`, com `response_model`, `dependencies` de autenticação e `responses` documentadas.
-- Processamento dentro de `anyio.fail_after(settings.request_timeout_seconds)`, executado com `to_thread.run_sync`.
+- Processamento dentro de `anyio.fail_after(settings.request_timeout_seconds)`, executado com `to_thread.run_sync(..., abandon_on_cancel=True)`: sem esse parâmetro o timeout só dispara quando a thread termina.
+- Regra de negócio injetada por `Depends(get_transformador)`, para os testes trocarem por uma lenta (504) ou que falha (500) via `app.dependency_overrides`.
+- Rate limit por rota com `@limiter.limit(lambda: get_settings().rate_limit)` (configurável por `RATE_LIMIT`).
 - `TimeoutError` convertido em exceção de domínio com status 504.
 
 **Aplicação (`main.py`)**
@@ -93,7 +95,10 @@ projeto/
 **Testes (`tests/`)**
 - Unitários do serviço com pytest.
 - Integração com `httpx.AsyncClient(transport=ASGITransport(app=app))`.
-- Variáveis de ambiente definidas antes da importação da aplicação.
+- Variáveis de ambiente definidas em `tests/conftest.py` antes da importação da aplicação.
+- `test_comportamento_api.py`: testes genéricos de comportamento (401, 404, 413, 400, 429, 504, 500, health, métricas, docs). Use `ASGITransport(app=app, raise_app_exceptions=False)` para ver o 500 do handler.
+- Configuração do projeto: `[tool.uv] package = false`, `pythonpath = ["."]` no pytest e `__init__.py` em todos os pacotes (sem eles o mypy falha com "source file found twice").
+- Bancos: ver `assets/python-opcional/bancos/` (falha de banco = 503/504, nunca 500).
 
 ### 2.4 Execução e deploy
 

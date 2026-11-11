@@ -1,0 +1,10 @@
+# Manutenção de nós (drain) nunca derruba todas as réplicas de uma vez.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: projeto-api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: projeto-api

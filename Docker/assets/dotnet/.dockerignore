@@ -1,0 +1,25 @@
+# Segredos: nunca entram no contexto de build.
+.env
+.env.*
+!.env.example
+segredos.env
+appsettings.*.local.json
+*.pfx
+*.pem
+*.key
+
+# Saídas e caches locais
+**/bin/
+**/obj/
+**/TestResults/
+*.user
+.vs/
+.vscode/
+
+# Fora da imagem
+.git/
+.github/
+tests/
+k8s/
+Dockerfile
+.dockerignore

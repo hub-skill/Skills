@@ -8,6 +8,7 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "DENY";
         headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+        headers["X-Request-ID"] = context.TraceIdentifier;
         return next(context);
     }
 }

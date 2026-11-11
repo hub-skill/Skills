@@ -141,7 +141,8 @@ ProjetoApi/
 
 **Testes**
 - `ProjetoApi.UnitTests`: xUnit para o serviço e para o validador.
-- `ProjetoApi.IntegrationTests`: `WebApplicationFactory<Program>` com `ConfigureAppConfiguration` para definir a chave de teste. Cobre os mesmos casos do Python.
+- `ProjetoApi.IntegrationTests`: `WebApplicationFactory<Program>` com `UseSetting` para definir a chave de teste. Cobre os mesmos casos do Python.
+- `ComportamentoDaApiTests`: testes genéricos de comportamento (formato de erro, 401/404/413/429/500/504, health, cabeçalhos, documentação). `ApiFactoryConfiguravel` sobe a API com outra configuração e, se preciso, com um serviço falso (`ServicoFalso`) que atrasa ou lança exceção. O TestServer não aplica `MaxRequestBodySize` do Kestrel: o 413 vem de um middleware que confere o `Content-Length`.
 - `Program` precisa ficar acessível aos testes (classe `public partial class Program { }` ao final de `Program.cs`).
 - Propriedades com `FsCheck.Xunit` (`[Property]`).
 - `coverlet.collector` para cobertura.
