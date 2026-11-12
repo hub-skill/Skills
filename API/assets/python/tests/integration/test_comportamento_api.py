@@ -127,6 +127,26 @@ async def test_json_valido_com_forma_errada_responde_422(cliente: AsyncClient, c
     afirmar_problema(resposta, 422, "entrada_invalida")
 
 
+async def test_respostas_de_erro_levam_request_id_e_cabecalhos_de_seguranca(cliente: AsyncClient) -> None:
+    def quebra(texto: str) -> str:
+        raise RuntimeError("falha")
+
+    app.dependency_overrides[get_transformador] = lambda: quebra
+    respostas = {
+        401: await cliente.post(URL, json=CORPO_VALIDO),
+        404: await cliente.get("/nao-existe", headers=CABECALHOS),
+        413: await cliente.post(URL, content=b"{" + b" " * 70_000 + b"}", headers=CABECALHOS_JSON),
+        400: await cliente.post(URL, content=b"{nao e json", headers=CABECALHOS_JSON),
+        500: await cliente.post(URL, json=CORPO_VALIDO, headers=CABECALHOS),
+    }
+
+    for status, resposta in respostas.items():
+        assert resposta.status_code == status
+        assert resposta.headers["x-request-id"] == resposta.json()["request_id"], status
+        assert resposta.headers["x-content-type-options"] == "nosniff", status
+        assert resposta.headers["x-frame-options"] == "DENY", status
+
+
 async def test_health_e_cabecalhos_de_seguranca(cliente: AsyncClient) -> None:
     vivo = await cliente.get("/health/live")
     pronto = await cliente.get("/health/ready")

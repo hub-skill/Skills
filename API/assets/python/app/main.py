@@ -82,20 +82,30 @@ async def contexto_da_requisicao(
     request.state.request_id = str(uuid.uuid4())
 
     tamanho = request.headers.get("content-length")
-    if tamanho is not None and tamanho.isdigit() and int(tamanho) > TAMANHO_MAXIMO_CORPO:
-        return _resposta_erro(request, 413, "corpo_muito_grande", "Corpo da requisição excede o limite.")
+    grande = tamanho is not None and tamanho.isdigit() and int(tamanho) > TAMANHO_MAXIMO_CORPO
+    # Só com chave válida a API lê o corpo aqui (sem ela a resposta é 401). O corpo fica em cache para a rota.
+    chave_ok = chave_valida(request.headers.get("X-API-Key"), get_settings())
+    corpo = b"" if grande or not chave_ok else await request.body()
 
-    # JSON que o template .NET recusa na leitura (mais de 64 níveis, NaN/Infinity): 400, igual a ele.
-    # Só com chave válida (sem ela a resposta é 401 e a API nem lê o corpo). O corpo fica em cache.
-    if (
-        request.method == "POST"
+    if grande:
+        response: Response = _resposta_erro(
+            request, 413, "corpo_muito_grande", "Corpo da requisição excede o limite."
+        )
+    elif (
+        # JSON que o template .NET recusa na leitura (mais de 64 níveis, NaN/Infinity): 400, igual a ele.
+        chave_ok
+        and request.method == "POST"
         and "json" in request.headers.get("content-type", "")
-        and chave_valida(request.headers.get("X-API-Key"), get_settings())
-        and corpo_json_ilegivel(await request.body())
+        and corpo_json_ilegivel(corpo)
     ):
-        return _resposta_erro(request, 400, "requisicao_invalida", "Requisição inválida.")
+        response = _resposta_erro(request, 400, "requisicao_invalida", "Requisição inválida.")
+    else:
+        try:
+            response = await call_next(request)
+        except Exception as exc:  # noqa: BLE001 - o 500 sai daqui para receber os mesmos headers das demais respostas
+            response = await tratar_erro_inesperado(request, exc)
 
-    response = await call_next(request)
+    # Toda resposta, de sucesso ou de erro (inclusive 413, 400 e 500), leva request_id e headers de segurança.
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"

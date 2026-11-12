@@ -21,6 +21,14 @@ public sealed class ApiKeyAuthenticationHandler(
     /// <summary>Valor do WWW-Authenticate no 401, igual ao do template Python.</summary>
     public const string DesafioWwwAuthenticate = "APIKey";
 
+    /// <summary>Compara a chave recebida com a esperada em tempo constante (FixedTimeEquals; tamanhos diferentes = false).</summary>
+    public static bool ChaveValida(string? recebida, string esperada)
+    {
+        ArgumentNullException.ThrowIfNull(esperada);
+        return recebida is not null
+            && CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(recebida), Encoding.UTF8.GetBytes(esperada));
+    }
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(Header, out var valores))
@@ -28,10 +36,7 @@ public sealed class ApiKeyAuthenticationHandler(
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
-        // FixedTimeEquals compara em tempo constante e retorna false se os tamanhos diferirem.
-        var recebida = Encoding.UTF8.GetBytes(valores.ToString());
-        var esperada = Encoding.UTF8.GetBytes(settings.ApiKey);
-        if (!CryptographicOperations.FixedTimeEquals(recebida, esperada))
+        if (!ChaveValida(valores.ToString(), settings.ApiKey))
         {
             return Task.FromResult(AuthenticateResult.Fail("Chave inválida"));
         }

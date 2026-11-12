@@ -150,6 +150,31 @@ public sealed class ComportamentoDaApiTests(ApiFactory fabrica) : IClassFixture<
         await AfirmarProblema(resposta, HttpStatusCode.UnprocessableEntity, "entrada_invalida");
     }
 
+    [Theory]
+    [InlineData("sem_chave", 401)]
+    [InlineData("entrada_invalida", 422)]
+    [InlineData("rota_inexistente", 404)]
+    [InlineData("erro_inesperado", 500)]
+    public async Task Respostas_de_erro_levam_request_id_e_cabecalhos_de_seguranca(string chamada, int status)
+    {
+        // O tratador de exceções limpa os headers ao montar o erro: eles precisam ser definidos na hora de enviar.
+        using var comErro = new ApiFactoryConfiguravel(
+            new Dictionary<string, string>(), new ServicoFalso(lancar: new InvalidOperationException("falha")));
+        var resposta = chamada switch
+        {
+            "sem_chave" => await fabrica.CreateClient().PostAsJsonAsync(Url, CorpoValido),
+            "entrada_invalida" => await ClienteAutenticado().PostAsJsonAsync(Url, new { texto = "   " }),
+            "rota_inexistente" => await ClienteAutenticado().GetAsync(new Uri("/nao-existe", UriKind.Relative)),
+            _ => await ClienteAutenticado(comErro.CreateClient()).PostAsJsonAsync(Url, CorpoValido),
+        };
+
+        Assert.Equal(status, (int)resposta.StatusCode);
+        Assert.Equal("nosniff", resposta.Headers.GetValues("X-Content-Type-Options").Single());
+        Assert.Equal("DENY", resposta.Headers.GetValues("X-Frame-Options").Single());
+        using var corpo = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
+        Assert.Equal(corpo.RootElement.GetProperty("request_id").GetString(), resposta.Headers.GetValues("X-Request-ID").Single());
+    }
+
     [Fact]
     public async Task Health_e_cabecalhos_de_seguranca()
     {
