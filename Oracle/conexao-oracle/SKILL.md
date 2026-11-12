@@ -82,6 +82,7 @@ ORACLE_CALL_TIMEOUT_MS=10000
 ```
 
 - Na configuração, a senha é `SecretStr` (pydantic-settings), para não aparecer em logs nem em `repr`.
+- **Senha de usuário Oracle com no máximo 30 caracteres** (nesta instalação, 21c XE): acima disso `CREATE USER ... IDENTIFIED BY` falha com `ORA-00972: identificador muito longo`, mensagem que não cita senha. Gere senhas alfanuméricas de até 24 caracteres.
 - Usuário da aplicação com **privilégio mínimo**: `CREATE SESSION` + o que a aplicação precisa. Para ler tabelas de outro schema, conceda `SELECT` objeto a objeto e crie sinônimos, seguindo a skill **oracle-naming-sinonimos**. Nunca use `SYSTEM`/`SYS` na aplicação.
 
 ## 6. Código
@@ -121,6 +122,7 @@ with oracledb.connect(user=s.oracle_user, password=s.oracle_password.get_secret_
 | ORA-12170 / DPY-6000 | Timeout de rede | Rede, VPN ou firewall |
 | ORA-01045 | Usuário sem `CREATE SESSION` | `grant create session to <u>` |
 | ORA-00942 | Tabela ou view não existe (ou sem permissão) | Conferir o schema, o grant de `SELECT` e o sinônimo |
+| ORA-00972 | Identificador muito longo | Em `CREATE USER ... IDENTIFIED BY`, a senha tem mais de 30 caracteres: use até 24. Em objetos, nome acima do limite |
 | ORA-03113 / DPY-4011 | Conexão caiu | O pool descarta e reconecta; avaliar `ping_interval` |
 | DPY-4005 | Espera por conexão do pool esgotada (ou banco fora) | Rever `max` do pool e o `wait_timeout` |
 | DPY-4024 / ORA-01013 | `call_timeout` estourou / comando cancelado | Otimizar a consulta ou rever o limite (504) |
