@@ -11,6 +11,17 @@ de Crédito; os resultados estão no SKILL.md.
 
 Docker Desktop → **Settings → Kubernetes → Enable Kubernetes** → **Apply & restart**. Esperar o ícone verde.
 
+**Sem Kubernetes ligado** (`kubectl config current-context` responde "current-context is not set" e `kubectl get nodes` tenta
+`localhost:8080`): só o usuário liga, e não dá para aplicar nada. Valide o que não precisa de cluster e diga que **não foi
+aplicado em cluster**:
+
+```bash
+kubectl kustomize k8s/overlays/local > local.yaml          # renderiza (precisa de config.env e segredos.env)
+docker run --rm -i ghcr.io/yannh/kubeconform:latest -strict -summary - < local.yaml   # no Git Bash: prefixe MSYS_NO_PATHCONV=1
+```
+
+O overlay `producao` não renderiza sem `config.env` (esperado: ele é um modelo; o cofre fornece o Secret).
+
 ```powershell
 kubectl config current-context    # docker-desktop
 kubectl get nodes                 # 1 nó Ready

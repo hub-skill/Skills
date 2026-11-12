@@ -54,7 +54,8 @@ Rode quando o ambiente permitir (`kubectl get nodes` mostra um nó `Ready`):
 2. `kubectl apply -k`, rollout concluído, pod `READY 1/1` com `RESTARTS 0` e chamada real pelo `port-forward`.
 3. Comportamento: banco fora → readiness 503 sem reinício; `rollout restart` sem erro.
 
-Se não conseguir executar, diga isso. Não afirme que o deploy funciona sem ter rodado.
+Se não conseguir executar, diga isso. Não afirme que o deploy funciona sem ter rodado. Sem Kubernetes ligado (só o usuário liga),
+valide só `kubectl kustomize` e kubeconform e registre "não aplicado em cluster" (ver `references/validacao-local.md`).
 
 ### Situação dos templates
 
