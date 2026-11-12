@@ -54,6 +54,10 @@ as duas stacks.
 
 ## Verificações
 
+> **No Git Bash** (e em qualquer shell do Git para Windows), argumentos que começam com `/` são convertidos em caminhos do
+> Windows: `-v /var/run/docker.sock:...` vira `C:\Program Files\Git\var\...` e o Docker responde "mkdir ... Acesso negado".
+> Use `MSYS_NO_PATHCONV=1` e `//var/run/docker.sock` (barra dupla). No PowerShell isso não acontece.
+
 ```powershell
 docker build -t projeto-api:0.1.0 .
 # Lint do Dockerfile e varredura de vulnerabilidades sem instalar nada (rodam como containers):

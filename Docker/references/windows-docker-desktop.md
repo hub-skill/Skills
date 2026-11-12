@@ -20,6 +20,12 @@ Leia antes de instalar, configurar ou validar imagens na máquina do usuário.
 
 Conferir: `docker version` (precisa mostrar a seção Server).
 
+**Daemon desligado** (`docker version` mostra só o Client, ou `docker ps` diz que não achou
+`//./pipe/dockerDesktopLinuxEngine`): o Docker Desktop está fechado. Abra-o pelo executável
+(`%LocalAppData%\Programs\DockerDesktop\Docker Desktop.exe`, ou o atalho) e espere `docker version` mostrar o Server
+(na validação de 12/11/2026 levou ~10 s; o WSL aparece como `Stopped` em `wsl -l -v` enquanto isso). Avise o usuário de que
+você ligou o Docker Desktop e de que ele continua rodando.
+
 GPU: `docker run --gpus` só funciona com placa **NVIDIA**. GPU Intel/AMD integrada não acelera containers, e APIs
 que esperam o banco (I/O) não ganham nada com GPU.
 

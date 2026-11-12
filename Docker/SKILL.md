@@ -40,7 +40,9 @@ Ao adaptar:
    for específico do projeto.
 4. **Arquivo de variáveis do container** (`.env.docker`): gerado do `.env` **sem as credenciais de administrador**
    e com o banco em `host.docker.internal`. Coloque-o no `.gitignore` **antes** de gerar. O usuário preenche
-   senhas só no `.env`, **nunca pelo chat**; ao mostrar o arquivo, mostre só os nomes das variáveis.
+   senhas só no `.env`, **nunca pelo chat**; ao mostrar o arquivo, mostre só os nomes das variáveis (`cut -d= -f1`).
+   Cuidado ao conferir o `.env` com `grep`: um padrão amplo (`Banco` casa `Bancos__Postgres__Senha`) imprime os **valores**.
+   Se algum valor aparecer na saída, gere outro antes de usá-lo.
 5. **`ALLOWED_HOSTS` / `Api__AllowedHosts`**: mantenha `localhost`; o Kubernetes vai precisar dele nas probes.
 
 ## Passo 4: verificar
@@ -55,7 +57,9 @@ Rode quando o Docker estiver instalado (`docker version` responde):
 5. Banco inacessível (porta errada por `-e`): `live` 200, `ready` 503, chamada `503 banco_indisponivel` e o
    container continua de pé.
 
-Se não conseguir executar, diga isso. Não afirme que a imagem funciona sem ter rodado.
+Se não conseguir executar, diga isso. Não afirme que a imagem funciona sem ter rodado. Docker Desktop desligado não é motivo
+para pular a verificação: ligue-o (ver `references/windows-docker-desktop.md`, "Daemon desligado") e avise o usuário. No Git Bash,
+veja a nota sobre `MSYS_NO_PATHCONV` em `references/imagens.md` antes de montar o socket no trivy.
 
 ### Situação dos templates
 
