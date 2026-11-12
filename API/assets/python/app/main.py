@@ -110,6 +110,8 @@ async def contexto_da_requisicao(
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Respostas (e erros, com request_id) não podem ficar em cache de proxy ou navegador.
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 

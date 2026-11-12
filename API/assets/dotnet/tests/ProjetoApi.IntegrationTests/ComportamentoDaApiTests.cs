@@ -171,6 +171,7 @@ public sealed class ComportamentoDaApiTests(ApiFactory fabrica) : IClassFixture<
         Assert.Equal(status, (int)resposta.StatusCode);
         Assert.Equal("nosniff", resposta.Headers.GetValues("X-Content-Type-Options").Single());
         Assert.Equal("DENY", resposta.Headers.GetValues("X-Frame-Options").Single());
+        Assert.Equal("no-store", resposta.Headers.CacheControl?.ToString());
         using var corpo = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
         Assert.Equal(corpo.RootElement.GetProperty("request_id").GetString(), resposta.Headers.GetValues("X-Request-ID").Single());
     }
@@ -190,6 +191,8 @@ public sealed class ComportamentoDaApiTests(ApiFactory fabrica) : IClassFixture<
         Assert.Equal("DENY", vivo.Headers.GetValues("X-Frame-Options").Single());
         Assert.StartsWith("max-age=", vivo.Headers.GetValues("Strict-Transport-Security").Single(), StringComparison.Ordinal);
         Assert.False(string.IsNullOrEmpty(vivo.Headers.GetValues("X-Request-ID").Single()));
+        Assert.Equal("no-store", vivo.Headers.CacheControl?.ToString());
+        Assert.Equal("no-store", pronto.Headers.CacheControl?.ToString());
     }
 
     [Fact]

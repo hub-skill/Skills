@@ -76,6 +76,8 @@ app.UseMiddleware<MovimentacaoMiddleware>(); // antes de app.UseExceptionHandler
 ```
 
 6. **Testes que já existem** (`ApiFactory` e `ApiFactoryConfiguravel`): troque os repositórios por falsos, para não tocarem o banco.
+   Troque **todos** os repositórios reais da API (também o de consultas/listas do módulo `bancos`), não só os da movimentação, e use a mesma
+   opção `TamanhoMaximoDoCorpo` do `Program.cs` em `MovimentacaoOpcoes`. Se a API carrega `.env`, desligue-o nos testes.
    `MovimentacaoFalsa` e `DestinoDeErrosFalso` estão em `MovimentacaoApiTests.cs`:
 
 ```csharp

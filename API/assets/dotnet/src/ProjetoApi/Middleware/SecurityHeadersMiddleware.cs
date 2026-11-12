@@ -18,6 +18,8 @@ public sealed class SecurityHeadersMiddleware(RequestDelegate next)
                 headers["X-Frame-Options"] = "DENY";
                 headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
                 headers["X-Request-ID"] = contexto.TraceIdentifier;
+                // Respostas de uma API de negócio (e os erros, com request_id) não podem ficar em cache de proxy ou navegador.
+                headers["Cache-Control"] = "no-store";
                 return Task.CompletedTask;
             },
             context);

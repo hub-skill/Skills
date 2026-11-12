@@ -11,13 +11,15 @@ Motor-de-Credito-Net, com os dois bancos reais. Garante que **falha de banco nun
 | `src/Bancos/Postgres.cs` | `ConexoesPostgres.Montar` (read only + `statement_timeout` para leitura) e `ErrosPostgres.TraduzirAsync` |
 | `src/Bancos/Oracle.cs` | `ConexoesOracle.Montar` e `ErrosOracle.TraduzirAsync` (inclui o `ORA-50201` do ODP.NET) |
 | `src/Bancos/BancoHealthCheck.cs` | `/health/ready` indisponível quando o banco falha |
-| `tests/FalhasDeBancoTests.cs` | Drivers reais contra porta sem servidor (roda no CI, sem banco) e classificação dos códigos |
+| `src/Bancos/RespostaDeSaudeComBanco.cs` | Corpo do `/health/ready` com banco: `{"status":"ok","banco":"postgres"}` e, com o banco fora, 503 `{"status":"banco_indisponivel"}` |
+| `tests/FalhasDeBancoTests.cs`, `tests/RespostaDeSaudeComBancoTests.cs` | Drivers reais contra porta sem servidor (roda no CI, sem banco), classificação dos códigos e o corpo do `/health/ready` |
 
 Copie só o que usar: sem Oracle, apague `Oracle.cs` e os testes de Oracle; sem PostgreSQL, o inverso.
 
 ## Como incluir
 
-1. Copie `src/Bancos/` para `src/ProjetoApi/Bancos/` e `tests/FalhasDeBancoTests.cs` para `tests/ProjetoApi.UnitTests/`.
+1. Copie `src/Bancos/` para `src/ProjetoApi/Bancos/` e `tests/FalhasDeBancoTests.cs` e `tests/RespostaDeSaudeComBancoTests.cs` para
+   `tests/ProjetoApi.UnitTests/`.
 2. Em `src/ProjetoApi/ProjetoApi.csproj`, adicione os pacotes usados (as versões já estão no `Directory.Packages.props`,
    inclusive a correção da dependência vulnerável que o driver Oracle traz):
 
@@ -62,9 +64,27 @@ builder.Services.AddHealthChecks().Add(new HealthCheckRegistration("banco",
     })), failureStatus: null, tags: null));
 ```
 
+   Com o módulo, o corpo do `/health/ready` passa a informar o banco: troque o `ResponseWriter` do `MapHealthChecks("/health/ready", ...)`
+   no `Program.cs` (o do template base, `RespostaDeSaude.Pronto`, é genérico e responde só `{"status":"ok"}` / `indisponivel`):
+
+```csharp
+ResponseWriter = (contexto, relatorio) => RespostaDeSaudeComBanco.Pronto(contexto, relatorio, "postgres"), // ou "oracle"
+```
+
+   Resultado: 200 `{"status":"ok","banco":"postgres"}`; banco fora, 503 `{"status":"banco_indisponivel"}` (o mesmo nome do `code` de
+   erro das chamadas de negócio). Atualize o teste `Health_e_cabecalhos_de_seguranca` e o pedido `health/ready` da coleção Postman.
+
 6. Credenciais no `.env`/variáveis de ambiente (`Bancos__Postgres__Senha`...), com um usuário de aplicação de
    privilégio mínimo. Para o banco em si, siga as skills de nomenclatura (postgresql-naming-schemas,
    oracle-naming-sinonimos).
+
+## Cuidados com o Oracle e com testes de banco real
+
+- Senha de usuário Oracle: no máximo 30 caracteres (ver a skill **conexao-oracle**).
+- Teste de permissão: negado = `ORA-00942`/`01031` (Oracle) e `42501` (PostgreSQL); `INSERT` permitido sem a linha-pai falha na chave
+  estrangeira (`23503`). Não assuma que um valor "improvável" não existe nos dados reais.
+- Dois executáveis na solução (API e ferramenta) têm cada um um `Program`: em projeto de teste que referencia os dois, use outro tipo
+  público da API no `WebApplicationFactory<T>`.
 
 ## Não coberto pelos testes automáticos
 

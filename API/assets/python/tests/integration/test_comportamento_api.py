@@ -145,6 +145,7 @@ async def test_respostas_de_erro_levam_request_id_e_cabecalhos_de_seguranca(clie
         assert resposta.headers["x-request-id"] == resposta.json()["request_id"], status
         assert resposta.headers["x-content-type-options"] == "nosniff", status
         assert resposta.headers["x-frame-options"] == "DENY", status
+        assert resposta.headers["cache-control"] == "no-store", status
 
 
 async def test_health_e_cabecalhos_de_seguranca(cliente: AsyncClient) -> None:
@@ -156,6 +157,7 @@ async def test_health_e_cabecalhos_de_seguranca(cliente: AsyncClient) -> None:
     assert vivo.headers["x-frame-options"] == "DENY"
     assert vivo.headers["strict-transport-security"].startswith("max-age=")
     assert vivo.headers["x-request-id"]
+    assert vivo.headers["cache-control"] == "no-store" and pronto.headers["cache-control"] == "no-store"
 
 
 async def test_metricas_prometheus(cliente: AsyncClient) -> None:

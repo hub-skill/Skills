@@ -612,7 +612,7 @@
                 "ready"
               ]
             },
-            "description": "200 `{\"status\":\"ok\"}`; 503 `{\"status\":\"indisponivel\"}` quando uma dependência falha. ADAPTE se a API tiver banco (ex.: `{\"status\":\"ok\",\"banco\":\"postgres\"}`).",
+            "description": "200 `{\"status\":\"ok\"}`; 503 `{\"status\":\"indisponivel\"}` quando uma dependência falha. ADAPTE se a API usar o módulo bancos: 200 `{\"status\":\"ok\",\"banco\":\"postgres\"}` (ou `oracle`) e 503 `{\"status\":\"banco_indisponivel\"}`; ajuste também o teste deste pedido.",
             "auth": {
               "type": "noauth"
             }
