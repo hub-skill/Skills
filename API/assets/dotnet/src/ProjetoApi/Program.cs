@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication;
@@ -6,12 +5,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
 using ProjetoApi.Configuration;
 using ProjetoApi.Contracts;
 using ProjetoApi.Endpoints.V1;
 using ProjetoApi.Errors;
+using ProjetoApi.Health;
 using ProjetoApi.Middleware;
 using ProjetoApi.Security;
 using ProjetoApi.Services;
@@ -51,10 +52,11 @@ builder.Services.AddAuthorization(opcoes =>
 builder.Services.AddRateLimiter(opcoes =>
 {
     opcoes.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    opcoes.OnRejected = (contexto, _) =>
+    opcoes.OnRejected = async (contexto, ct) =>
     {
         contexto.HttpContext.Response.Headers.RetryAfter = "60";
-        return ValueTask.CompletedTask;
+        await RespostaDeErro.EscreverAsync(contexto.HttpContext, StatusCodes.Status429TooManyRequests,
+            "limite_excedido", "Muitas requisições. Tente mais tarde.", ct);
     };
     opcoes.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(contexto =>
         RateLimitPartition.GetFixedWindowLimiter(
@@ -67,14 +69,14 @@ builder.Services.AddRateLimiter(opcoes =>
             }));
 });
 
-// Erros padronizados (RFC 7807), sempre com "code" e "request_id", inclusive 401, 404 e 429.
-builder.Services.AddProblemDetails(opcoes => opcoes.CustomizeProblemDetails = contexto =>
-{
-    var status = contexto.ProblemDetails.Status ?? contexto.HttpContext.Response.StatusCode;
-    contexto.ProblemDetails.Extensions.TryAdd("code", string.Create(CultureInfo.InvariantCulture, $"http_{status}"));
-    contexto.ProblemDetails.Extensions.TryAdd("request_id", contexto.HttpContext.TraceIdentifier);
-});
+// Erros no formato único (RFC 9457, ver RespostaDeErro): title, status, code e request_id, inclusive 401, 404,
+// 405 e 429. AddProblemDetails fica só porque o UseExceptionHandler exige; quem escreve o corpo é RespostaDeErro
+// (o ProblemDetailsService acrescentaria "type" e "traceId").
+builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ErroDeDominioHandler>();
+// JSON malformado vira BadHttpRequestException (400 requisicao_invalida) em qualquer ambiente. O padrão do
+// framework é lançar só em Development; em produção responderia 400 fora do nosso formato.
+builder.Services.Configure<RouteHandlerOptions>(opcoes => opcoes.ThrowOnBadRequest = true);
 
 // Proxies: adicione os IPs confiáveis em KnownProxies. Sem isso, X-Forwarded-* é ignorado.
 builder.Services.Configure<ForwardedHeadersOptions>(opcoes =>
@@ -98,7 +100,7 @@ builder.Services.AddOpenTelemetry()
 var app = builder.Build();
 
 app.UseExceptionHandler();
-app.UseStatusCodePages(); // 401, 404 e 429 também saem no formato ProblemDetails
+app.UseStatusCodePages(contexto => RespostaDeErro.EscreverGenericoAsync(contexto.HttpContext)); // 401, 404, 405
 app.UseHostFiltering();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 app.Use(async (contexto, proximo) =>
@@ -128,8 +130,14 @@ if (settings.EnableDocs)
 
 // Health checks anônimos; métricas devem ficar na rede interna.
 // Fora do rate limit: no Kubernetes as probes saem todas do IP do nó; um 429 na liveness reiniciaria o pod.
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).AllowAnonymous().DisableRateLimiting();
-app.MapHealthChecks("/health/ready").AllowAnonymous().DisableRateLimiting();
+// Corpo JSON igual ao do template Python (RespostaDeSaude); Degraded também conta como não pronto (503).
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false, ResponseWriter = RespostaDeSaude.Vivo })
+    .AllowAnonymous().DisableRateLimiting();
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    ResponseWriter = RespostaDeSaude.Pronto,
+    ResultStatusCodes = { [HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable }
+}).AllowAnonymous().DisableRateLimiting();
 app.MapPrometheusScrapingEndpoint("/metrics").AllowAnonymous().DisableRateLimiting();
 
 app.MapTransformacaoV1();

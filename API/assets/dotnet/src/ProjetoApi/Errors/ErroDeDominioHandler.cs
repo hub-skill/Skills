@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
 
 namespace ProjetoApi.Errors;
 
@@ -28,12 +27,7 @@ public sealed partial class ErroDeDominioHandler(ILogger<ErroDeDominioHandler> l
             LogErroNaoTratado(logger, exception);
         }
 
-        var problema = new ProblemDetails { Status = status, Title = mensagem };
-        problema.Extensions["code"] = codigo;
-        problema.Extensions["request_id"] = httpContext.TraceIdentifier;
-
-        httpContext.Response.StatusCode = status;
-        await httpContext.Response.WriteAsJsonAsync(problema, cancellationToken);
+        await RespostaDeErro.EscreverAsync(httpContext, status, codigo, mensagem, cancellationToken);
         return true;
     }
 }

@@ -85,7 +85,8 @@ projeto/
 - `FastAPI` com `docs_url`, `redoc_url` e `openapi_url` condicionados a `enable_docs`.
 - `TrustedHostMiddleware` e `CORSMiddleware` com origens explícitas.
 - Middleware HTTP que gera `request_id`, verifica `Content-Length` (413) e adiciona headers de segurança.
-- Handlers para `ErroDeDominio`, `RequestValidationError`, `StarletteHTTPException` e `Exception`, todos no mesmo formato de erro.
+- Handlers para `ErroDeDominio`, `RequestValidationError`, `StarletteHTTPException` e `Exception`, todos no mesmo formato de erro: RFC 9457 com `application/problem+json` e exatamente `title`, `status`, `code` e `request_id` (o mesmo corpo do template .NET). Títulos em português para 401/404/405.
+- Sem chave válida, 404 e 405 viram 401 com `WWW-Authenticate: APIKey` (como no .NET, a API não revela quais rotas existem); `deps.chave_valida` faz a comparação em tempo constante.
 
 **Observabilidade**
 - `prometheus-fastapi-instrumentator` expondo `/metrics` na rede interna.

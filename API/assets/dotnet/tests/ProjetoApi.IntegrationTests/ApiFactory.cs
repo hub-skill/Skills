@@ -13,6 +13,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        // Production: o WebApplicationFactory usa Development por padrão, e alguns comportamentos mudam com o
+        // ambiente (ex.: ThrowOnBadRequest). Testar como em produção pega essas diferenças.
+        builder.UseEnvironment("Production");
         // Define a chave de teste sem depender de variáveis de ambiente da máquina.
         builder.UseSetting("Api:ApiKey", ChaveDeTeste);
     }
@@ -28,6 +31,7 @@ public sealed class ApiFactoryConfiguravel(
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseEnvironment("Production");
         builder.UseSetting("Api:ApiKey", ApiFactory.ChaveDeTeste);
         foreach (var (chave, valor) in configuracao)
         {

@@ -18,6 +18,9 @@ public sealed class ApiKeyAuthenticationHandler(
     public const string SchemeName = "ApiKey";
     public const string Header = "X-API-Key";
 
+    /// <summary>Valor do WWW-Authenticate no 401, igual ao do template Python.</summary>
+    public const string DesafioWwwAuthenticate = "APIKey";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         if (!Request.Headers.TryGetValue(Header, out var valores))
@@ -41,7 +44,7 @@ public sealed class ApiKeyAuthenticationHandler(
     // 401 com o esquema esperado, como pede a especificação HTTP.
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
-        Response.Headers.WWWAuthenticate = SchemeName;
+        Response.Headers.WWWAuthenticate = DesafioWwwAuthenticate;
         return base.HandleChallengeAsync(properties);
     }
 }

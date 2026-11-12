@@ -11,12 +11,12 @@
 | Limite de concorrência | `anyio.CapacityLimiter` | `ConcurrencyLimiter` ou `SemaphoreSlim` |
 | Timeout | `anyio.fail_after` | `AddRequestTimeouts` ou `CancellationToken` |
 | Trabalho CPU-bound | `to_thread.run_sync` | `Task.Run` |
-| Formato de erro | Handlers + JSON próprio | `AddProblemDetails` + `IExceptionHandler` (RFC 7807) |
+| Formato de erro (o mesmo corpo RFC 9457 nos dois) | Handlers + `_resposta_erro` | `RespostaDeErro` + `IExceptionHandler` + `UseStatusCodePages` |
 | Hosts confiáveis | `TrustedHostMiddleware` | `AddHostFiltering` |
 | CORS | `CORSMiddleware` | `AddCors` |
 | Logs JSON | `logging` com formatador JSON | `AddJsonConsole` |
 | Métricas | `prometheus-fastapi-instrumentator` | OpenTelemetry + exportador Prometheus |
-| Health checks | Rotas próprias | `MapHealthChecks` |
+| Health checks (mesmo JSON nos dois) | Rotas próprias | `MapHealthChecks` + `ResponseWriter` |
 | Documentação | OpenAPI automático + `/docs` | `AddOpenApi` + Scalar |
 | Testes de integração | `httpx` + `ASGITransport` | `WebApplicationFactory` |
 | Testes de propriedade | hypothesis | FsCheck |

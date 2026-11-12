@@ -85,7 +85,8 @@ Resultado esperado: <o que deve voltar>.
 ### Autenticação
 
 Toda chamada (exceto health checks e documentação) exige o header `X-API-Key: <valor de Api__ApiKey>`.
-A chave é comparada em tempo constante. Sem chave ou com chave errada: **401**.
+A chave é comparada em tempo constante. Sem chave ou com chave errada: **401** (com `WWW-Authenticate: APIKey`).
+Sem chave, até rotas inexistentes e métodos errados respondem 401: a API não revela quais rotas existem.
 
 ### `POST /api/v1/<rota>`
 
@@ -115,8 +116,8 @@ A chave é comparada em tempo constante. Sem chave ou com chave errada: **401**.
 
 | Endpoint | Autenticação | Uso |
 |---|---|---|
-| `GET /health/live` | não | A aplicação está no ar (não consulta dependências) |
-| `GET /health/ready` | não | A aplicação e as dependências (ex.: banco) respondem; `503` se alguma falhar |
+| `GET /health/live` | não | A aplicação está no ar (não consulta dependências): `{"status": "ok"}` |
+| `GET /health/ready` | não | A aplicação e as dependências (ex.: banco) respondem: `{"status": "ok"}`; `503` se alguma falhar |
 | `GET /metrics` | não | Métricas Prometheus. **Exponha só na rede interna** |
 | `GET /openapi/v1.json` | não | Contrato OpenAPI. Só com `Api__EnableDocs=true` |
 | `GET /scalar` | não | Documentação interativa. Só com `Api__EnableDocs=true` |
@@ -148,26 +149,35 @@ depender de validação de outra área, diga isso explicitamente.>
 
 ## 6. Erros
 
-Formato único (RFC 7807 – ProblemDetails), sempre com `code` e `request_id`:
+Formato único, **o mesmo da versão Python**: RFC 9457 (Problem Details), com `Content-Type: application/problem+json`
+e exatamente quatro campos: `title` (texto para pessoas), `status` (o mesmo código HTTP), `code` (para o seu programa
+decidir o que fazer) e `request_id`:
 
 ```json
-{ "title": "Dados de entrada inválidos.", "status": 422, "code": "entrada_invalida", "request_id": "..." }
+{
+  "title": "Dados de entrada inválidos.",
+  "status": 422,
+  "code": "entrada_invalida",
+  "request_id": "0HNH7S2B3K1QF:00000001"
+}
 ```
+
+Decida sempre pelo `code` (ou pelo `status`), nunca pelo texto do `title`, que pode ser reescrito.
 
 | HTTP | `code` | Quando | O cliente deve |
 |---|---|---|---|
 | 400 | `requisicao_invalida` | JSON malformado | Corrigir o corpo |
 | 401 | `http_401` | Sem `X-API-Key` ou chave errada | Conferir a chave |
 | 404 | `http_404` | Rota inexistente (com chave válida) | Conferir a URL |
+| 405 | `http_405` | Método não permitido (a rota é só `POST`) | Usar `POST` |
 | 413 | `corpo_muito_grande` | Corpo acima do limite | Reduzir o corpo |
 | 422 | `entrada_invalida` | Entrada inválida | Corrigir; **não repetir** |
-| 429 | `http_429` | Limite de requisições | Esperar `Retry-After` |
+| 429 | `limite_excedido` | Limite de requisições | Esperar `Retry-After` |
 | 500 | `erro_interno` | Erro inesperado | Informar o `request_id` |
 | 504 | `timeout` | Processamento lento demais | Tentar de novo depois |
 | <outros> | <code> | <quando> | <ação> |
 
-As mensagens de erro nunca repetem a entrada nem detalhes internos. Sem chave, até rotas inexistentes respondem
-401. Repita só 429, 503 e 504, com espera crescente; nunca repita erros de entrada (400, 413, 422).
+As mensagens de erro nunca repetem a entrada nem detalhes internos. Repita só 429, 503 e 504, com espera crescente; nunca repita erros de entrada (400, 413, 422).
 
 ---
 

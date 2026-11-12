@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using ProjetoApi.Contracts;
 using Xunit;
+using static ProjetoApi.IntegrationTests.ContratoDeErro;
 
 namespace ProjetoApi.IntegrationTests;
 
@@ -40,7 +41,7 @@ public sealed class TransformacaoTests(ApiFactory fabrica) : IClassFixture<ApiFa
     public async Task Rejeita_sem_chave()
     {
         var resposta = await fabrica.CreateClient().PostAsJsonAsync(Url, new { texto = "ola" });
-        Assert.Equal(HttpStatusCode.Unauthorized, resposta.StatusCode);
+        await AfirmarProblema(resposta, HttpStatusCode.Unauthorized, "http_401");
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public sealed class TransformacaoTests(ApiFactory fabrica) : IClassFixture<ApiFa
         cliente.DefaultRequestHeaders.Add("X-API-Key", "errada");
 
         var resposta = await cliente.PostAsJsonAsync(Url, new { texto = "ola" });
-        Assert.Equal(HttpStatusCode.Unauthorized, resposta.StatusCode);
+        await AfirmarProblema(resposta, HttpStatusCode.Unauthorized, "http_401");
     }
 
     [Theory]
@@ -61,7 +62,7 @@ public sealed class TransformacaoTests(ApiFactory fabrica) : IClassFixture<ApiFa
     public async Task Rejeita_entrada_invalida(string texto)
     {
         var resposta = await ClienteAutenticado().PostAsJsonAsync(Url, new { texto });
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, resposta.StatusCode);
+        await AfirmarProblema(resposta, HttpStatusCode.UnprocessableEntity, "entrada_invalida");
     }
 
     [Fact]
