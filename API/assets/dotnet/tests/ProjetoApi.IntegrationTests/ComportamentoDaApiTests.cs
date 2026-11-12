@@ -81,6 +81,31 @@ public sealed class ComportamentoDaApiTests(ApiFactory fabrica) : IClassFixture<
     }
 
     [Fact]
+    public async Task Json_aninhado_fundo_demais_responde_400_e_nao_500()
+    {
+        // ~45 KB (abaixo do limite de corpo) num campo extra: o leitor percorre o valor e passa da profundidade máxima.
+        var corpo = "{\"texto\": \"ola\", \"extra\": " + string.Concat(Enumerable.Repeat("{\"a\": ", 9000)) + "1" + new string('}', 9001);
+        using var conteudo = new StringContent(corpo, Encoding.UTF8, "application/json");
+        var resposta = await ClienteAutenticado().PostAsync(Url, conteudo);
+
+        await AfirmarProblema(resposta, HttpStatusCode.BadRequest, "requisicao_invalida");
+    }
+
+    [Theory]
+    [InlineData("{\"texto\": 1}")]
+    [InlineData("[\"ola\"]")]
+    [InlineData("{}")]
+    [InlineData("{\"texto\": null}")]
+    public async Task Json_valido_com_forma_errada_responde_422(string corpo)
+    {
+        // Igual ao template Python: só o corpo ilegível é 400; JSON válido com forma errada é 422.
+        using var conteudo = new StringContent(corpo, Encoding.UTF8, "application/json");
+        var resposta = await ClienteAutenticado().PostAsync(Url, conteudo);
+
+        await AfirmarProblema(resposta, HttpStatusCode.UnprocessableEntity, "entrada_invalida");
+    }
+
+    [Fact]
     public async Task Health_e_cabecalhos_de_seguranca()
     {
         var cliente = fabrica.CreateClient();

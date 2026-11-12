@@ -125,6 +125,10 @@ async def tratar_erro_http(request: Request, exc: StarletteHTTPException) -> JSO
         return _resposta_erro(
             request, 401, "http_401", _TITULOS_HTTP[401], headers={"WWW-Authenticate": "APIKey"}
         )
+    # Corpo que o FastAPI não consegue ler (ex.: JSON aninhado fundo demais estoura a recursão do parser):
+    # mesmo erro do JSON malformado, em vez de 400 http_400 com o texto do framework em inglês.
+    if exc.status_code == 400:
+        return _resposta_erro(request, 400, "requisicao_invalida", "Requisição inválida.")
     return _resposta_erro(
         request,
         exc.status_code,

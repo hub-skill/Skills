@@ -40,6 +40,14 @@ builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = TamanhoMaxim
 builder.Services.AddSingleton<ITransformacaoService, TransformacaoService>();
 builder.Services.AddValidatorsFromAssemblyContaining<EntradaTextoValidator>();
 
+// JSON respeita os tipos do contrato: null em campo não anulável ou campo obrigatório ausente vira erro de
+// leitura (422 entrada_invalida) em vez de chegar null ao endpoint (antes, {} dava 500 no Trim()).
+builder.Services.ConfigureHttpJsonOptions(opcoes =>
+{
+    opcoes.SerializerOptions.RespectNullableAnnotations = true;
+    opcoes.SerializerOptions.RespectRequiredConstructorParameters = true;
+});
+
 // Autenticação por API key. Por padrão, todas as rotas exigem autenticação.
 builder.Services
     .AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)

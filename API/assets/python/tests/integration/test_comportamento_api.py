@@ -22,6 +22,7 @@ from tests.contrato import afirmar_problema
 URL = "/api/v1/transformar"
 CORPO_VALIDO = {"texto": "ola"}
 CABECALHOS = {"X-API-Key": os.environ["API_KEY"]}
+CABECALHOS_JSON = {**CABECALHOS, "Content-Type": "application/json"}
 
 
 @pytest_asyncio.fixture
@@ -72,6 +73,24 @@ async def test_json_invalido_responde_400_e_nao_500(cliente: AsyncClient) -> Non
         URL, content=b"{nao e json", headers={**CABECALHOS, "Content-Type": "application/json"}
     )
     afirmar_problema(resposta, 400, "requisicao_invalida")
+
+
+async def test_json_aninhado_fundo_demais_responde_400_e_nao_500(cliente: AsyncClient) -> None:
+    # ~45 KB (abaixo do limite de corpo) num campo extra: o parser tem de ler tudo e estoura a recursão.
+    corpo = b'{"texto": "ola", "extra": ' + b'{"a": ' * 9000 + b"1" + b"}" * 9001
+    resposta = await cliente.post(URL, content=corpo, headers=CABECALHOS_JSON)
+    afirmar_problema(resposta, 400, "requisicao_invalida")
+
+
+@pytest.mark.parametrize(
+    "corpo",
+    [b'{"texto": 1}', b'["ola"]', b"{}", b'{"texto": null}'],
+    ids=["tipo_errado", "lista", "sem_campo", "nulo"],
+)
+async def test_json_valido_com_forma_errada_responde_422(cliente: AsyncClient, corpo: bytes) -> None:
+    # Igual ao template .NET: só o corpo ilegível é 400; JSON válido com forma errada é 422.
+    resposta = await cliente.post(URL, content=corpo, headers=CABECALHOS_JSON)
+    afirmar_problema(resposta, 422, "entrada_invalida")
 
 
 async def test_health_e_cabecalhos_de_seguranca(cliente: AsyncClient) -> None:

@@ -1,0 +1,720 @@
+{
+  "info": {
+    "_postman_id": "831634e8-2083-5f3e-8a48-de4b3d5dd698",
+    "name": "ProjetoApi (.NET)",
+    "description": "Chamadas à **ProjetoApi (.NET)**. ADAPTE o nome, a rota de negócio e os corpos ao gerar a API.\n\n**Antes de usar:** na aba *Variables* da coleção, preencha `api_key` em **Current value** com o valor de `Api__ApiKey` do `.env`. Não grave a chave em *Initial value*: esse campo vai junto se a coleção for exportada ou compartilhada.\n\n`base_url`: `http://localhost:5080` (`dotnet run --urls http://127.0.0.1:5080`); no Docker, a porta publicada com `-p`.\n\nA autenticação (`X-API-Key: {{api_key}}`) é herdada da coleção; os pedidos de erro e de saúde trocam por \"sem autenticação\" quando precisam.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "key",
+        "value": "X-API-Key",
+        "type": "string"
+      },
+      {
+        "key": "value",
+        "value": "{{api_key}}",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Contrato de erro comum aos dois Motores: RFC 9457 (Problem Details).",
+          "pm.globals.set(\"afirmarProblema\", `(function (status, codigo) {",
+          "  pm.test(\"status \" + status, () => pm.response.to.have.status(status));",
+          "  pm.test(\"Content-Type application/problem+json\", () =>",
+          "    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/problem+json\"));",
+          "  const corpo = pm.response.json();",
+          "  pm.test(\"campos exatos: title, status, code, request_id\", () =>",
+          "    pm.expect(Object.keys(corpo).sort()).to.eql([\"code\", \"request_id\", \"status\", \"title\"]));",
+          "  pm.test(\"code = \" + codigo, () => pm.expect(corpo.code).to.eql(codigo));",
+          "  pm.test(\"status no corpo = \" + status, () => pm.expect(corpo.status).to.eql(status));",
+          "})`);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:5080",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "",
+      "type": "secret"
+    }
+  ],
+  "item": [
+    {
+      "name": "Rota de negócio",
+      "description": "ADAPTE: troque a rota, os corpos e os testes pelos da API gerada.",
+      "item": [
+        {
+          "name": "Transforma texto",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "Remove os espaços das pontas e devolve em maiúsculas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"texto\": \"  ola  \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const corpo = pm.response.json();",
+                  "pm.test(\"campo resultado\", () => pm.expect(corpo).to.have.keys(\"resultado\"));",
+                  "pm.test(\"X-Request-ID presente\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.ok);",
+                  "",
+                  "pm.test(\"resultado OLA\", () => pm.expect(corpo.resultado).to.eql(\"OLA\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Aceita unicode",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"texto\": \"ação\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "const corpo = pm.response.json();",
+                  "pm.test(\"campo resultado\", () => pm.expect(corpo).to.have.keys(\"resultado\"));",
+                  "pm.test(\"X-Request-ID presente\", () => pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.ok);",
+                  "",
+                  "pm.test(\"resultado AÇÃO\", () => pm.expect(corpo.resultado).to.eql(\"AÇÃO\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Erros (contrato RFC 9457)",
+      "description": "Cada pedido provoca um erro e confere o formato: `application/problem+json` com exatamente `title`, `status`, `code` e `request_id` (o mesmo formato da versão Python).",
+      "item": [
+        {
+          "name": "401 sem chave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"texto\": \"ola\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(401, \"http_401\");",
+                  "pm.test(\"WWW-Authenticate: APIKey\", () => pm.expect(pm.response.headers.get(\"WWW-Authenticate\")).to.eql(\"APIKey\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 chave errada",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"texto\": \"ola\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "apikey",
+              "apikey": [
+                {
+                  "key": "key",
+                  "value": "X-API-Key",
+                  "type": "string"
+                },
+                {
+                  "key": "value",
+                  "value": "chave-errada",
+                  "type": "string"
+                },
+                {
+                  "key": "in",
+                  "value": "header",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(401, \"http_401\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "401 rota inexistente sem chave",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nao-existe",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nao-existe"
+              ]
+            },
+            "description": "Sem chave a API não revela quais rotas existem.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(401, \"http_401\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "404 rota inexistente com chave",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/nao-existe",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "nao-existe"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(404, \"http_404\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "405 método errado",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(405, \"http_405\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "400 JSON malformado",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{nao e json",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(400, \"requisicao_invalida\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "422 entrada inválida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "ADAPTE: uma entrada que a validação da API rejeita. Não repita: corrija a entrada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"texto\": \"   \"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(422, \"entrada_invalida\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "413 corpo grande demais",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "ADAPTE o tamanho: gera um corpo de ~70 KB no pre-request (o limite do template é 64 KB).",
+            "body": {
+              "mode": "raw",
+              "raw": "{{corpo_grande}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "eval(pm.globals.get(\"afirmarProblema\"))(413, \"corpo_muito_grande\");"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.variables.set(\"corpo_grande\", JSON.stringify({ texto: \"a\".repeat(70000) }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "429 limite excedido (rodar várias vezes)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transformar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transformar"
+              ]
+            },
+            "description": "Só responde 429 depois de passar o limite por minuto da API. Rode com o Collection Runner (ex.: 70 iterações com limite 60/min). Espere `Retry-After` antes de tentar de novo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"texto\": \"ola\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 429) {",
+                  "  eval(pm.globals.get(\"afirmarProblema\"))(429, \"limite_excedido\");",
+                  "  pm.test(\"Retry-After = 60\", () => pm.expect(pm.response.headers.get(\"Retry-After\")).to.eql(\"60\"));",
+                  "} else {",
+                  "  pm.test(\"ainda dentro do limite (200)\", () => pm.response.to.have.status(200));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Saúde e operação",
+      "description": "Sem autenticação e fora do rate limit (probes do Kubernetes).",
+      "item": [
+        {
+          "name": "health/live",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/live",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "live"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('corpo {\"status\":\"ok\"}', () => pm.expect(pm.response.json()).to.eql({ status: \"ok\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/ready",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "description": "200 `{\"status\":\"ok\"}`; 503 `{\"status\":\"indisponivel\"}` quando uma dependência falha. ADAPTE se a API tiver banco (ex.: `{\"status\":\"ok\",\"banco\":\"postgres\"}`).",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test('corpo {\"status\":\"ok\"}', () => pm.expect(pm.response.json()).to.eql({ status: \"ok\" }));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "metrics (Prometheus)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/metrics",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "metrics"
+              ]
+            },
+            "description": "Exponha só na rede interna.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "OpenAPI (só com docs ligadas)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/openapi/v1.json",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "openapi",
+                "v1.json"
+              ]
+            },
+            "description": "Responde 200 só com `Api__EnableDocs=true`. Desligada: 401 sem chave.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"200 (docs ligadas) ou 401 (desligadas)\", () => pm.expect([200, 401]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Documentação interativa (só com docs ligadas)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/scalar",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "scalar"
+              ]
+            },
+            "description": "Abra no navegador: {{base_url}}/scalar. Só com `Api__EnableDocs=true`.",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": []
+        }
+      ]
+    }
+  ]
+}

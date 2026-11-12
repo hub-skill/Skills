@@ -187,6 +187,13 @@ crescente; nunca repita erros de entrada (400, 413, 422).
 
 ## 7. Exemplos de integração
 
+### Postman
+
+Importe `postman/<Projeto>.postman_collection.json` (botão **Import**). Na aba *Variables* da coleção, preencha
+`api_key` em **Current value** (nunca em *Initial value*, que vai junto se a coleção for exportada). A coleção traz a
+rota de negócio, os erros do contrato (com testes automáticos que conferem `application/problem+json` e os quatro
+campos) e os health checks. O pedido de 429 só estoura o limite no Collection Runner, com várias iterações.
+
 ### curl
 
 ```bash
