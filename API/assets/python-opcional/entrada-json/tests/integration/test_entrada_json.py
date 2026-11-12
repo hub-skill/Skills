@@ -96,6 +96,8 @@ async def test_campo_obrigatorio_ausente_e_lista_no_topo_respondem_422(cliente: 
     sem_cliente = {k: v for k, v in VALIDO.items() if k != "cliente"}
     afirmar_problema(await _enviar(cliente, sem_cliente), 422, "entrada_invalida")
     afirmar_problema(await _enviar(cliente, [VALIDO]), 422, "entrada_invalida")
+    afirmar_problema(await _enviar(cliente, None), 422, "entrada_invalida")  # "null" no topo
+    afirmar_problema(await cliente.post(URL, content=b"", headers=CABECALHOS), 422, "entrada_invalida")
 
 
 async def test_json_aninhado_fundo_demais_responde_400(cliente: AsyncClient) -> None:

@@ -169,12 +169,12 @@ Decida sempre pelo `code` (ou pelo `status`), nunca pelo texto do `title`, que p
 
 | HTTP | `code` | Quando | O cliente deve |
 |---|---|---|---|
-| 400 | `requisicao_invalida` | JSON malformado | Corrigir o corpo |
+| 400 | `requisicao_invalida` | JSON malformado (inclusive `NaN`/`Infinity`) ou aninhado em mais de 64 níveis | Corrigir o corpo |
 | 401 | `http_401` | Sem `X-API-Key` ou chave errada | Conferir a chave |
 | 404 | `http_404` | Rota inexistente (com chave válida) | Conferir a URL |
 | 405 | `http_405` | Método não permitido (a rota é só `POST`) | Usar `POST` |
 | 413 | `corpo_muito_grande` | Corpo acima do limite | Reduzir o corpo |
-| 422 | `entrada_invalida` | Entrada inválida | Corrigir; **não repetir** |
+| 422 | `entrada_invalida` | Entrada inválida, inclusive JSON válido com tipo errado, corpo vazio ou que não é um objeto | Corrigir; **não repetir** |
 | 429 | `limite_excedido` | Limite de requisições | Esperar `Retry-After` |
 | 500 | `erro_interno` | Erro inesperado | Informar o `request_id` |
 | 504 | `timeout` | Processamento lento demais | Tentar de novo depois |

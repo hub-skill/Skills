@@ -13,14 +13,13 @@ módulo Python. **ADAPTE** os campos, os limites e a regra de negócio; mantenha
 | `src/Contracts/Pedido.cs` | `EntradaPedido`, `ClienteDoPedido`, `ItemDoPedido`, `SaidaPedido` (records) |
 | `src/Validation/EntradaPedidoValidator.cs` | Limites de tamanho, faixa e formato (FluentValidation) |
 | `src/Endpoints/V1/PedidoEndpoints.cs` | Rota `POST /api/v1/pedidos` e a regra de negócio do exemplo |
-| `src/Middleware/ProfundidadeDoJsonMiddleware.cs` | JSON aninhado fundo demais = 400, como no Python |
 | `tests/EntradaJsonTests.cs` | 20 testes: válido, opcionais, 15 formas erradas (422), lista no topo, JSON fundo demais (400), sem eco |
 
 ## Passo a passo
 
 1. Copie os arquivos de `src/` para `src/ProjetoApi/` (mesmas subpastas) e `tests/EntradaJsonTests.cs` para
    `tests/ProjetoApi.IntegrationTests/`.
-2. Em `Program.cs`, complete o `ConfigureHttpJsonOptions` que já existe no template e registre o middleware e a rota:
+2. Em `Program.cs`, complete o `ConfigureHttpJsonOptions` que já existe no template e registre a rota:
 
 ```csharp
 using System.Text.Json;
@@ -34,9 +33,6 @@ builder.Services.ConfigureHttpJsonOptions(opcoes =>
     opcoes.SerializerOptions.NumberHandling = JsonNumberHandling.Strict;  // "2" não vira 2 (o padrão Web aceita)
     opcoes.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower; // id_externo, como no Python
 });
-...
-app.UseAuthorization();
-app.UseMiddleware<ProfundidadeDoJsonMiddleware>(); // depois da autorização: só quem tem chave faz a API ler o corpo
 ...
 app.MapPedidoV1();
 ```
@@ -54,19 +50,18 @@ app.MapPedidoV1();
   `RespectNullableAnnotations`); campo opcional = parâmetro com valor padrão (`string? Email = null`).
 - **Limites em todo campo** no validador; **dinheiro em centavos** (`long`), nunca `double`.
 - **A resposta não devolve dados pessoais** recebidos; o erro nunca ecoa a entrada.
-- **Profundidade**: sem o middleware, o .NET para no primeiro tipo errado (422) e não mede a profundidade; com ele,
-  acima de 1000 níveis é 400, como no Python. O teste `Json_aninhado_fundo_demais_responde_400_e_nao_500` do
-  template falha sem o middleware.
+- **Profundidade**: o template base já traz o `ProfundidadeDoJsonMiddleware` (mais de 64 níveis = 400, como no
+  Python). Mantenha-o: sem ele, com `UnmappedMemberHandling.Disallow` o .NET para no primeiro tipo errado (422) e
+  não mede a profundidade.
 
 ## Contrato de erro da entrada JSON (igual ao Python)
 
 | Situação | Resposta |
 |---|---|
-| JSON malformado ou aninhado fundo demais (mais de 1000 níveis) | 400 `requisicao_invalida` |
+| JSON malformado (inclusive `NaN`/`Infinity`) ou aninhado em mais de 64 níveis | 400 `requisicao_invalida` |
 | JSON válido com forma errada: campo desconhecido, tipo errado, obrigatório ausente, `null` em obrigatório, fora do limite, lista no lugar de objeto | 422 `entrada_invalida` |
 
 O `ErroDeDominioHandler` do template separa os dois casos: `JsonReaderException` (sintaxe) = 400, o resto = 422.
-Diferença conhecida: `NaN`/`Infinity` são erro de leitura no .NET (400) e viram 422 no Python.
 
 ## Coleção Postman
 

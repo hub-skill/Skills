@@ -23,8 +23,14 @@ public static class PedidoEndpoints
     }
 
     private static async Task<Ok<SaidaPedido>> CriarAsync(
-        EntradaPedido entrada, IValidator<EntradaPedido> validador, CancellationToken cancellationToken)
+        EntradaPedido? entrada, IValidator<EntradaPedido> validador, CancellationToken cancellationToken)
     {
+        // Corpo vazio ou "null": 422, como no Python (sem o "?" o ASP.NET respondia 400 antes de chegar aqui).
+        if (entrada is null)
+        {
+            throw new EntradaInvalidaException("Dados de entrada inválidos.");
+        }
+
         var validacao = await validador.ValidateAsync(entrada, cancellationToken);
         if (!validacao.IsValid)
         {

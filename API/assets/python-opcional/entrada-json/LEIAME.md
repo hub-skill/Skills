@@ -45,11 +45,11 @@ app.include_router(router_pedido)
 
 | Situação | Resposta |
 |---|---|
-| JSON malformado ou aninhado fundo demais (cerca de 1000 níveis) | 400 `requisicao_invalida` |
+| JSON malformado (inclusive `NaN`/`Infinity`) ou aninhado em mais de 64 níveis | 400 `requisicao_invalida` |
 | JSON válido com forma errada: campo desconhecido, tipo errado, obrigatório ausente, `null` em obrigatório, fora do limite, lista no lugar de objeto | 422 `entrada_invalida` |
 
-Diferença conhecida: `NaN`/`Infinity` (não são JSON válido) chegam ao Python como número e viram 422; no .NET são
-erro de leitura, 400. Nos dois a entrada é recusada.
+A profundidade e o `NaN`/`Infinity` são verificados pelo template base (`app/core/profundidade_json.py`), antes do
+FastAPI ler o corpo: o parser do Python aceitaria milhares de níveis e `NaN` como número.
 
 ## Coleção Postman
 

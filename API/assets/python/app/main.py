@@ -17,6 +17,7 @@ from app.core.config import get_settings
 from app.core.exceptions import ErroDeDominio
 from app.core.limiter import limiter
 from app.core.logging import configurar_logs
+from app.core.profundidade_json import corpo_json_ilegivel
 
 configurar_logs()
 logger = logging.getLogger(__name__)
@@ -84,6 +85,16 @@ async def contexto_da_requisicao(
     if tamanho is not None and tamanho.isdigit() and int(tamanho) > TAMANHO_MAXIMO_CORPO:
         return _resposta_erro(request, 413, "corpo_muito_grande", "Corpo da requisição excede o limite.")
 
+    # JSON que o template .NET recusa na leitura (mais de 64 níveis, NaN/Infinity): 400, igual a ele.
+    # Só com chave válida (sem ela a resposta é 401 e a API nem lê o corpo). O corpo fica em cache.
+    if (
+        request.method == "POST"
+        and "json" in request.headers.get("content-type", "")
+        and chave_valida(request.headers.get("X-API-Key"), get_settings())
+        and corpo_json_ilegivel(await request.body())
+    ):
+        return _resposta_erro(request, 400, "requisicao_invalida", "Requisição inválida.")
+
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -125,8 +136,8 @@ async def tratar_erro_http(request: Request, exc: StarletteHTTPException) -> JSO
         return _resposta_erro(
             request, 401, "http_401", _TITULOS_HTTP[401], headers={"WWW-Authenticate": "APIKey"}
         )
-    # Corpo que o FastAPI não consegue ler (ex.: JSON aninhado fundo demais estoura a recursão do parser):
-    # mesmo erro do JSON malformado, em vez de 400 http_400 com o texto do framework em inglês.
+    # Corpo que o FastAPI não consegue ler (ex.: UTF-8 inválido): mesmo erro do JSON malformado, em vez de
+    # 400 http_400 com o texto do framework em inglês.
     if exc.status_code == 400:
         return _resposta_erro(request, 400, "requisicao_invalida", "Requisição inválida.")
     return _resposta_erro(

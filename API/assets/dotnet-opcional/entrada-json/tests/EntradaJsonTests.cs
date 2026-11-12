@@ -115,6 +115,8 @@ public sealed class EntradaJsonTests(ApiFactory fabrica) : IClassFixture<ApiFact
 
         await AfirmarProblema(await EnviarAsync(semCliente.ToJsonString()), HttpStatusCode.UnprocessableEntity, "entrada_invalida");
         await AfirmarProblema(await EnviarAsync("[" + Valido + "]"), HttpStatusCode.UnprocessableEntity, "entrada_invalida");
+        await AfirmarProblema(await EnviarAsync("null"), HttpStatusCode.UnprocessableEntity, "entrada_invalida");
+        await AfirmarProblema(await EnviarAsync(string.Empty), HttpStatusCode.UnprocessableEntity, "entrada_invalida");
     }
 
     [Fact]

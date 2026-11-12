@@ -91,11 +91,56 @@ public sealed class ComportamentoDaApiTests(ApiFactory fabrica) : IClassFixture<
         await AfirmarProblema(resposta, HttpStatusCode.BadRequest, "requisicao_invalida");
     }
 
+    /// <summary>Corpo válido com um campo extra aninhado até <paramref name="niveis"/> no total (a raiz conta como 1).</summary>
+    private static string Aninhado(int niveis) =>
+        "{\"texto\": \"ola\", \"extra\": " + new string('[', niveis - 1) + new string(']', niveis - 1) + "}";
+
+    private async Task<HttpResponseMessage> EnviarJsonAsync(string corpo, bool comChave = true)
+    {
+        var cliente = comChave ? ClienteAutenticado() : fabrica.CreateClient();
+        using var conteudo = new StringContent(corpo, Encoding.UTF8, "application/json");
+        return await cliente.PostAsync(new Uri(Url, UriKind.Relative), conteudo);
+    }
+
+    [Fact]
+    public async Task Json_ate_64_niveis_passa_e_acima_responde_400()
+    {
+        // Mesmo limite do template Python. Até 64 a profundidade não é motivo de recusa (com o módulo entrada-json o
+        // campo extra dá 422, mas nunca 400). Chaves dentro de textos não contam.
+        Assert.NotEqual(HttpStatusCode.BadRequest, (await EnviarJsonAsync(Aninhado(64))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await EnviarJsonAsync("{\"texto\": \"" + new string('[', 100) + "\"}")).StatusCode);
+        await AfirmarProblema(await EnviarJsonAsync(Aninhado(65)), HttpStatusCode.BadRequest, "requisicao_invalida");
+    }
+
+    [Fact]
+    public async Task Utf8_invalido_responde_400()
+    {
+        using var conteudo = new ByteArrayContent([.. "{\"texto\": \"ol"u8, 0xFF, .. "\"}"u8]);
+        conteudo.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+        var resposta = await ClienteAutenticado().PostAsync(new Uri(Url, UriKind.Relative), conteudo);
+
+        await AfirmarProblema(resposta, HttpStatusCode.BadRequest, "requisicao_invalida");
+    }
+
+    [Fact]
+    public async Task Json_fundo_sem_chave_responde_401() =>
+        await AfirmarProblema(await EnviarJsonAsync(Aninhado(65), comChave: false), HttpStatusCode.Unauthorized, "http_401");
+
+    [Theory]
+    [InlineData("NaN")]
+    [InlineData("Infinity")]
+    [InlineData("-Infinity")]
+    public async Task Nan_e_infinity_respondem_400_como_json_malformado(string valor) =>
+        await AfirmarProblema(
+            await EnviarJsonAsync("{\"texto\": \"ola\", \"extra\": " + valor + "}"), HttpStatusCode.BadRequest, "requisicao_invalida");
+
     [Theory]
     [InlineData("{\"texto\": 1}")]
     [InlineData("[\"ola\"]")]
     [InlineData("{}")]
     [InlineData("{\"texto\": null}")]
+    [InlineData("null")]
+    [InlineData("")]
     public async Task Json_valido_com_forma_errada_responde_422(string corpo)
     {
         // Igual ao template Python: só o corpo ilegível é 400; JSON válido com forma errada é 422.

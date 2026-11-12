@@ -26,12 +26,18 @@ public static class TransformacaoEndpoints
     }
 
     private static async Task<Ok<SaidaTexto>> TransformarAsync(
-        EntradaTexto entrada,
+        EntradaTexto? entrada,
         IValidator<EntradaTexto> validador,
         ITransformacaoService servico,
         ApiSettings settings,
         CancellationToken cancellationToken)
     {
+        // Corpo vazio ou "null": 422, como no template Python (sem o "?" o ASP.NET respondia 400 antes de chegar aqui).
+        if (entrada is null)
+        {
+            throw new EntradaInvalidaException("Dados de entrada inválidos.");
+        }
+
         // Remove espaços nas extremidades antes de validar, como no template Python.
         var normalizada = new EntradaTexto(entrada.Texto.Trim());
 
