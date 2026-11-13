@@ -265,3 +265,8 @@ alter role motor_app in database motor_credito set search_path = credito;
 ```
 
 Nomes de schema, tabelas e `search_path`: siga a skill **postgresql-naming-schemas**.
+
+## Lições vindas da skill criar-api (sessão somente leitura e tempos)
+
+- Com banco, os tempos vão em escada: consulta (`statement_timeout`/`call_timeout`) e espera do pool **menores** que `REQUEST_TIMEOUT_SECONDS`. Com o banco fora, o pool espera o prazo dele antes de desistir; se a requisição tiver limite menor, o cliente recebe 504 em vez de 503 (visto no Motor de Crédito com pool de 5 s e requisição de 2 s).
+- Sessão da API somente leitura (`default_transaction_read_only`): as rotinas que gravam precisam de `set transaction read write` na própria transação. Num teste de permissão, use uma sessão de escrita com o usuário da aplicação: na somente leitura, `update` e `delete` falham com `25006` antes de a permissão ser checada.

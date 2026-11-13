@@ -1,6 +1,6 @@
 ---
 name: conexao-postgresql
-description: ConexaoPostgreSQL – conecta aplicações Python (FastAPI, scripts, ETL) ao PostgreSQL com o driver psycopg 3 (sync e async) e psycopg_pool. Use sempre que o usuário quiser conectar, testar ou configurar acesso a um banco PostgreSQL (local, servidor, Docker, Supabase, Neon, RDS), montar string de conexão/URI/conninfo, ler postgresql.conf ou pg_hba.conf, criar pool de conexões, colocar credenciais Postgres no .env, configurar SSL (sslmode), ou diagnosticar erros de conexão (autenticação falhou, no pg_hba.conf entry, connection refused, timeout, ProactorEventLoop no Windows), mesmo que ele não cite "psycopg". Para criar ou nomear tabelas, schemas e search_path, use junto a skill postgresql-naming-schemas. Não use para Oracle, MySQL ou SQL Server.
+description: ConexaoPostgreSQL – conecta aplicações Python (FastAPI, scripts, ETL) ao PostgreSQL com o driver psycopg 3 (sync e async) e psycopg_pool. Use sempre que o usuário quiser conectar, testar ou configurar acesso a um banco PostgreSQL (local, servidor, Docker, Supabase, Neon, RDS), montar string de conexão/URI/conninfo, ler postgresql.conf ou pg_hba.conf, criar pool de conexões, colocar credenciais Postgres no .env, configurar SSL (sslmode), ou diagnosticar erros de conexão (autenticação falhou, no pg_hba.conf entry, connection refused, timeout, ProactorEventLoop no Windows), mesmo que ele não cite "psycopg". Para criar ou nomear tabelas, schemas e search_path, use junto a skill postgresql-naming-schemas. Para APIs C# (.NET) com Npgsql, use as lições de references/dotnet.md. Não use para Oracle, MySQL ou SQL Server.
 ---
 
 # ConexaoPostgreSQL: Python + PostgreSQL
@@ -106,7 +106,7 @@ Em Linux e macOS o loop padrão já é compatível, mas deixar `--loop asyncio:S
 
 ## 7. Código
 
-O padrão completo para FastAPI está em `references/fastapi.md`: Settings, `AsyncConnectionPool` no lifespan, dependência por requisição, tradução de erros, health check, testes e o script de usuário. Leia esse arquivo quando for escrever código de aplicação. Em resumo:
+Para **C# (.NET, Npgsql)**, leia `references/dotnet.md` (as lições do driver; o código pronto está no módulo `bancos` da skill criar-api). O padrão completo para FastAPI está em `references/fastapi.md`: Settings, `AsyncConnectionPool` no lifespan, dependência por requisição, tradução de erros, health check, testes e o script de usuário. Leia esse arquivo quando for escrever código de aplicação. Em resumo:
 
 - **Um pool por processo**, aberto na inicialização e fechado no desligamento, com `check=AsyncConnectionPool.check_connection` para descartar conexões mortas.
 - **Parâmetros sempre** (`%s` ou `%(nome)s`). Nunca monte SQL com f-string ou concatenação: é injeção de SQL. Para nomes dinâmicos (tabela, coluna), use `psycopg.sql.Identifier`, nunca o valor cru.
