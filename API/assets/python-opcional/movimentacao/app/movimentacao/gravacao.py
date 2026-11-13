@@ -1,4 +1,4 @@
-"""Gravação em segundo plano, em lotes (usada pelo log de erros e pela resposta da movimentação, ver http.py).
+"""Gravação em segundo plano, em lotes (usada pela movimentação, ver http.py).
 
 A resposta ao cliente nunca espera o banco: o registro entra numa fila em memória e uma tarefa de fundo grava
 em lotes. Se a fila encher (banco lento ou fora do ar), o registro é descartado e contado; se o banco

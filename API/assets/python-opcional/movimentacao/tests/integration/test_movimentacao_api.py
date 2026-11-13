@@ -1,14 +1,14 @@
-"""Movimentação ligada à API do template: numeração na chegada, resposta, X-Requisicao e log de erros.
+"""Movimentação ligada à API do template: ULID na chegada, X-Requisicao, uma gravação por requisição e o erro.
 
-Sem banco: um repositório falso numera e guarda tudo. Para ver o que foi gravado, os testes chamam
-``movimentacao.parar()``, que grava o que ainda está nas filas no repositório falso.
+Sem banco: um repositório falso guarda tudo. Para ver o que foi gravado, os testes chamam
+``movimentacao.parar()``, que grava o que ainda está na fila no repositório falso.
 """
 
 import asyncio
 import os
 from collections.abc import AsyncIterator, Iterator
+from datetime import UTC, datetime
 
-import anyio
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
@@ -16,38 +16,38 @@ from httpx import ASGITransport, AsyncClient
 from app.core.config import get_settings
 from app.core.limiter import limiter
 from app.main import app
+from app.movimentacao import ulid
 from app.movimentacao.http import Movimentacao
-from app.movimentacao.registros import RegistroErro, RegistroResposta
+from app.movimentacao.registros import RegistroMovimentacao
 from app.services.transformacao import get_transformador
 from tests.contrato import afirmar_problema
 
 URL = "/api/v1/transformar"
 CABECALHOS = {"X-API-Key": os.environ["API_KEY"]}
 CABECALHOS_JSON = {**CABECALHOS, "Content-Type": "application/json"}
-ANO = 2026
 
 
 class RepositorioFalso:
     def __init__(self) -> None:
-        self.chegadas: list[tuple[str, str, str | None]] = []  # (método, rota, conteúdo); número = posição + 1
-        self.respostas: dict[int, RegistroResposta] = {}
-        self.erros: list[RegistroErro] = []
-        self.numeracao_falha = False
-        self.numeracao_atraso = 0.0
+        self.registros: list[RegistroMovimentacao] = []
+        self.falha = False
+        self.portao: asyncio.Event | None = None  # enquanto fechado, a gravação espera (banco lento)
 
-    async def registrar_requisicao(self, metodo: str, rota: str, conteudo: str | None) -> tuple[int, int]:
-        if self.numeracao_falha:
+    async def gravar(self, registros: list[RegistroMovimentacao]) -> None:
+        if self.falha:
             raise ConnectionError("banco fora")
-        await anyio.sleep(self.numeracao_atraso)
-        self.chegadas.append((metodo, rota, conteudo))
-        return ANO, len(self.chegadas)
+        if self.portao is not None:
+            await self.portao.wait()
+        self.registros.extend(registros)
 
-    async def registrar_respostas(self, registros: list[RegistroResposta]) -> None:
-        for r in registros:
-            self.respostas[r.requisicao] = r
+    def por_id(self, requisicao_id: str) -> RegistroMovimentacao:
+        return next(r for r in self.registros if r.requisicao_id == requisicao_id)
 
-    async def gravar_erros(self, registros: list[RegistroErro]) -> None:
-        self.erros.extend(registros)
+
+def id_do_header(resposta: object) -> str:
+    identificador: str = resposta.headers["x-requisicao"]  # type: ignore[attr-defined]
+    assert ulid.valido(identificador), identificador
+    return identificador
 
 
 @pytest.fixture
@@ -55,14 +55,9 @@ def repo() -> RepositorioFalso:
     return RepositorioFalso()
 
 
-@pytest.fixture
-def prazo() -> float:
-    return 0.3  # curto, para o teste do banco lento não demorar
-
-
 @pytest_asyncio.fixture
-async def movimentacao(repo: RepositorioFalso, prazo: float) -> AsyncIterator[Movimentacao]:
-    app.state.movimentacao = Movimentacao(repo, ambiente="teste", prazo_para_numerar=prazo)
+async def movimentacao(repo: RepositorioFalso) -> AsyncIterator[Movimentacao]:
+    app.state.movimentacao = Movimentacao(repo, ambiente="teste")
     yield app.state.movimentacao
     app.dependency_overrides.clear()
     del app.state.movimentacao
@@ -70,25 +65,30 @@ async def movimentacao(repo: RepositorioFalso, prazo: float) -> AsyncIterator[Mo
 
 @pytest_asyncio.fixture
 async def cliente(movimentacao: Movimentacao) -> AsyncIterator[AsyncClient]:
-    async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app, raise_app_exceptions=False), base_url="http://test"
+    ) as c:
         yield c
 
 
-async def test_requisicao_com_sucesso_e_numerada_e_a_resposta_e_gravada(
+async def test_requisicao_com_sucesso_ganha_ulid_e_e_gravada_com_a_resposta(
     cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
 ) -> None:
     resposta = await cliente.post(URL, json={"texto": "  ola  "}, headers=CABECALHOS)
     await movimentacao.parar()
 
     assert resposta.status_code == 200
-    assert resposta.headers["x-requisicao"] == f"{ANO}-000001"
-    metodo, rota, conteudo = repo.chegadas[0]
-    assert (metodo, rota) == ("POST", URL)
-    assert conteudo is not None and "ola" in conteudo
-    gravada = repo.respostas[1]
-    assert (gravada.ano, gravada.status_http) == (ANO, 200)
+    gravada = repo.por_id(id_do_header(resposta))
+    assert (gravada.metodo, gravada.rota, gravada.status_http) == ("POST", URL, 200)
+    assert gravada.requisicao_conteudo is not None and "ola" in gravada.requisicao_conteudo
     assert (gravada.situacao_requisicao, gravada.situacao_resposta) == ("OK", "OK")
-    assert gravada.conteudo == resposta.text  # o conteúdo gravado é exatamente o que o cliente recebeu
+    assert (
+        gravada.resposta_conteudo == resposta.text
+    )  # o conteúdo gravado é exatamente o que o cliente recebeu
+    assert gravada.erro is None and gravada.resposta_em >= gravada.requisicao_em
+    assert (
+        abs((gravada.requisicao_em - ulid.momento(gravada.requisicao_id)).total_seconds()) < 0.002
+    )  # a hora no ULID
 
 
 async def test_cpf_e_mascarado_na_requisicao_e_na_resposta(
@@ -97,18 +97,22 @@ async def test_cpf_e_mascarado_na_requisicao_e_na_resposta(
     resposta = await cliente.post(URL, json={"texto": "cpf 529.982.247-25"}, headers=CABECALHOS)
     await movimentacao.parar()
 
+    gravada = repo.por_id(id_do_header(resposta))
     assert resposta.status_code == 200
-    conteudo = repo.chegadas[0][2]
-    assert conteudo is not None and "***.982.247-**" in conteudo and "529.982.247-25" not in conteudo
-    gravada = repo.respostas[1].conteudo
-    assert gravada is not None and "***.982.247-**" in gravada and "529.982.247-25" not in gravada
+    assert gravada.requisicao_conteudo is not None and "***.982.247-**" in gravada.requisicao_conteudo
+    assert "529.982.247-25" not in gravada.requisicao_conteudo
+    assert gravada.resposta_conteudo is not None and "***.982.247-**" in gravada.resposta_conteudo
+    assert "529.982.247-25" not in gravada.resposta_conteudo
 
 
-async def test_conteudo_da_requisicao_aceita_qualquer_formato(cliente: AsyncClient, repo: RepositorioFalso) -> None:
-    for corpo in (b"{nao e json", b"texto solto \xff com byte invalido", b'["lista"]', b"<xml><a>1</a></xml>"):
-        await cliente.post(URL, content=corpo, headers=CABECALHOS_JSON)
+async def test_conteudo_da_requisicao_aceita_qualquer_formato(
+    cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
+) -> None:
+    corpos = (b"{nao e json", b"texto solto \xff com byte invalido", b'["lista"]', b"<xml><a>1</a></xml>")
+    ids = [id_do_header(await cliente.post(URL, content=corpo, headers=CABECALHOS_JSON)) for corpo in corpos]
+    await movimentacao.parar()
 
-    gravados = [c for _, _, c in repo.chegadas]
+    gravados = [repo.por_id(i).requisicao_conteudo for i in ids]
     assert gravados[0] == "{nao e json"
     assert gravados[1] is not None and gravados[1].startswith("texto solto ") and "�" in gravados[1]
     assert gravados[2:] == ['["lista"]', "<xml><a>1</a></xml>"]
@@ -151,8 +155,7 @@ async def test_situacoes_da_requisicao_e_da_resposta(
     await movimentacao.parar()
 
     assert resposta.status_code == status
-    assert resposta.headers["x-requisicao"] == f"{ANO}-000001"
-    gravada = repo.respostas[1]
+    gravada = repo.por_id(id_do_header(resposta))
     assert (gravada.status_http, gravada.situacao_requisicao, gravada.situacao_resposta) == (
         status,
         situacao_requisicao,
@@ -160,7 +163,7 @@ async def test_situacoes_da_requisicao_e_da_resposta(
     )
 
 
-async def test_erro_nao_tratado_entra_na_movimentacao_com_os_cabecalhos_da_api(
+async def test_erro_nao_tratado_entra_na_movimentacao_com_os_cabecalhos_da_api_e_o_erro_junto(
     cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
 ) -> None:
     def quebra(texto: str) -> str:
@@ -171,10 +174,15 @@ async def test_erro_nao_tratado_entra_na_movimentacao_com_os_cabecalhos_da_api(
     await movimentacao.parar()
 
     assert resposta.status_code == 500
-    assert resposta.headers["x-requisicao"] and resposta.headers["x-request-id"]
-    assert resposta.headers["x-content-type-options"] == "nosniff"
-    assert repo.respostas[1].conteudo is not None and "senha" not in repo.respostas[1].conteudo
-    assert [(e.status, e.codigo, e.tipo_excecao) for e in repo.erros] == [(500, "erro_interno", "builtins.RuntimeError")]
+    assert resposta.headers["x-request-id"] and resposta.headers["x-content-type-options"] == "nosniff"
+    gravada = repo.por_id(id_do_header(resposta))
+    assert gravada.resposta_conteudo is not None and "senha" not in gravada.resposta_conteudo
+    assert gravada.erro is not None
+    assert (gravada.erro.status, gravada.erro.codigo, gravada.erro.tipo_excecao) == (
+        500,
+        "erro_interno",
+        "builtins.RuntimeError",
+    )
 
 
 @pytest.mark.parametrize(
@@ -195,13 +203,13 @@ async def test_sem_chave_valida_nao_entra_na_movimentacao(
     rota: str,
     cabecalhos: dict[str, str],
 ) -> None:
-    # Varreduras e chamadas sem chave recebem 401 e não gravam nada: nem movimentação, nem log de erros.
+    # Varreduras e chamadas sem chave recebem 401 e não gravam nada.
     resposta = await cliente.request(metodo, rota, json={"texto": "ola"}, headers=cabecalhos)
     await movimentacao.parar()
 
     afirmar_problema(resposta, 401, "http_401")
     assert "x-requisicao" not in resposta.headers
-    assert repo.chegadas == [] and repo.respostas == {} and repo.erros == []
+    assert repo.registros == []
 
 
 async def test_health_e_metrics_nao_entram_na_movimentacao(
@@ -213,34 +221,31 @@ async def test_health_e_metrics_nao_entram_na_movimentacao(
         assert "x-requisicao" not in resposta.headers
     await movimentacao.parar()
 
-    assert repo.chegadas == [] and repo.respostas == {}
+    assert repo.registros == []
 
 
-async def test_cada_erro_vai_para_o_log_com_a_chave_da_sua_movimentacao(
+async def test_cada_erro_e_gravado_junto_com_a_sua_movimentacao_sem_o_corpo(
     cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
 ) -> None:
     primeira = await cliente.post(URL, json={"texto": "   "}, headers=CABECALHOS)
     segunda = await cliente.get("/nao-existe", headers=CABECALHOS)
     await movimentacao.parar()
 
-    assert [(e.ano, e.requisicao, e.status, e.codigo) for e in repo.erros] == [
-        (ANO, 1, 422, "entrada_invalida"),
-        (ANO, 2, 404, "http_404"),
-    ]
-    assert primeira.headers["x-requisicao"] == f"{ANO}-000001" and segunda.headers["x-requisicao"] == f"{ANO}-000002"
-    erro = repo.erros[0]
-    assert erro.request_id == primeira.headers["x-request-id"] and erro.ambiente == "teste"
-    assert erro.duracao_ms is not None and erro.duracao_ms >= 0
-    assert "texto" not in repr(erro)  # nunca o corpo da requisição
+    for resposta, codigo in ((primeira, "entrada_invalida"), (segunda, "http_404")):
+        erro = repo.por_id(id_do_header(resposta)).erro
+        assert erro is not None and erro.codigo == codigo
+        assert erro.request_id == resposta.headers["x-request-id"] and erro.ambiente == "teste"
+        assert erro.duracao_ms is not None and erro.duracao_ms >= 0
+        assert "texto" not in repr(erro)  # nunca o corpo da requisição
 
 
-async def test_sucesso_nao_vai_para_o_log_de_erros(
+async def test_sucesso_nao_tem_erro(
     cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
 ) -> None:
-    await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)
+    resposta = await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)
     await movimentacao.parar()
 
-    assert repo.erros == []
+    assert repo.por_id(id_do_header(resposta)).erro is None
 
 
 @pytest.fixture
@@ -259,9 +264,10 @@ async def test_limite_de_requisicoes_estourado_tambem_entra_na_movimentacao(
     bloqueada = await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)
     await movimentacao.parar()
 
-    assert bloqueada.status_code == 429 and bloqueada.headers["x-requisicao"] == f"{ANO}-000002"
-    assert (repo.respostas[2].situacao_requisicao, repo.respostas[2].situacao_resposta) == ("ER", "ER")
-    assert [(e.status, e.codigo) for e in repo.erros] == [(429, "limite_excedido")]
+    gravada = repo.por_id(id_do_header(bloqueada))
+    assert bloqueada.status_code == 429
+    assert (gravada.situacao_requisicao, gravada.situacao_resposta) == ("ER", "ER")
+    assert gravada.erro is not None and gravada.erro.codigo == "limite_excedido"
 
 
 async def test_corpo_acima_do_limite_registra_so_o_tamanho(
@@ -271,45 +277,61 @@ async def test_corpo_acima_do_limite_registra_so_o_tamanho(
     resposta = await cliente.post(URL, content=corpo, headers=CABECALHOS_JSON)
     await movimentacao.parar()
 
+    gravada = repo.por_id(id_do_header(resposta))
     assert resposta.status_code == 413
-    conteudo = repo.chegadas[0][2]
-    assert conteudo is not None and str(len(corpo)) in conteudo and "1111" not in conteudo
-    assert [e.codigo for e in repo.erros] == ["corpo_muito_grande"]
+    assert gravada.requisicao_conteudo is not None and str(len(corpo)) in gravada.requisicao_conteudo
+    assert "1111" not in gravada.requisicao_conteudo
+    assert gravada.erro is not None and gravada.erro.codigo == "corpo_muito_grande"
 
 
-async def test_sem_numero_a_requisicao_segue_e_nada_e_gravado(
+async def test_banco_lento_ou_fora_na_gravacao_nao_afeta_a_resposta(
     cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
 ) -> None:
-    repo.numeracao_falha = True
-    ok = await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)
-    erro = await cliente.post(URL, json={"texto": "   "}, headers=CABECALHOS)
-    await movimentacao.parar()
-
-    assert ok.status_code == 200 and erro.status_code == 422
-    assert "x-requisicao" not in ok.headers and "x-requisicao" not in erro.headers
-    assert repo.respostas == {} and repo.erros == []  # o log de erros nunca recebe linha sem a chave
-
-
-async def test_banco_lento_na_chegada_nao_segura_a_requisicao_alem_do_prazo(
-    cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
-) -> None:
-    repo.numeracao_atraso = 5.0
+    # Banco lento: a gravação fica presa num portão (sem cronômetro: não depende da velocidade da máquina).
+    repo.portao = asyncio.Event()
+    movimentacao.iniciar()
     resposta = await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)
+
+    assert resposta.status_code == 200  # a resposta saiu com a gravação ainda presa
+    identificador = id_do_header(resposta)  # o número nasce na API: sempre existe
+    assert repo.registros == []
+    repo.portao.set()
+    async with asyncio.timeout(2):
+        while not repo.registros:
+            await asyncio.sleep(0.01)
+    assert repo.por_id(identificador).status_http == 200
+
+    # Banco fora: a gravação falha (o lote é perdido e o aviso vai para o log), e a resposta sai normalmente.
+    repo.falha = True
+    sem_banco = await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)
+    await movimentacao.parar()
+    assert sem_banco.status_code == 200 and ulid.valido(sem_banco.headers["x-requisicao"])
+    assert movimentacao.gravador.perdidos >= 1
+
+
+async def test_cada_requisicao_tem_um_ulid_proprio(cliente: AsyncClient, movimentacao: Movimentacao) -> None:
+    ids = [
+        id_do_header(await cliente.post(URL, json={"texto": "ola"}, headers=CABECALHOS)) for _ in range(30)
+    ]
     await movimentacao.parar()
 
-    assert resposta.status_code == 200 and "x-requisicao" not in resposta.headers
-    assert repo.chegadas == []  # a gravação lenta foi abandonada
+    assert len(set(ids)) == 30
+    agora = datetime.now(UTC)
+    assert all(0 <= (agora - ulid.momento(i)).total_seconds() < 30 for i in ids)
 
 
 async def test_iniciar_grava_em_segundo_plano_e_parar_encerra(
     cliente: AsyncClient, repo: RepositorioFalso, movimentacao: Movimentacao
 ) -> None:
     movimentacao.iniciar()
-    await cliente.post(URL, json={"texto": "   "}, headers=CABECALHOS)
+    resposta = await cliente.post(URL, json={"texto": "   "}, headers=CABECALHOS)
 
     async with asyncio.timeout(2):
-        while 1 not in repo.respostas or not repo.erros:  # sem parar(): a tarefa de fundo grava sozinha
+        while not repo.registros:  # sem parar(): a tarefa de fundo grava sozinha
             await asyncio.sleep(0.01)
     await movimentacao.parar()
 
-    assert repo.respostas[1].status_http == 422 and repo.erros[0].codigo == "entrada_invalida"
+    gravada = repo.por_id(id_do_header(resposta))
+    assert (
+        gravada.status_http == 422 and gravada.erro is not None and gravada.erro.codigo == "entrada_invalida"
+    )

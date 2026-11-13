@@ -2,9 +2,12 @@
 
 import asyncio
 import logging
+import re
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from app.movimentacao import ulid
 from app.movimentacao.gravacao import GravadorEmLotes
 from app.movimentacao.regras import (
     LIMITE_DO_CONTEUDO,
@@ -12,7 +15,6 @@ from app.movimentacao.regras import (
     conteudo_para_gravar,
     mascarar_cpfs,
     movimentar,
-    numero_formatado,
     situacoes,
 )
 
@@ -50,7 +52,10 @@ def test_conteudo_acima_do_limite_e_cortado_com_aviso() -> None:
 
 
 def test_corpo_acima_do_limite_da_api_grava_so_o_tamanho() -> None:
-    assert conteudo_da_requisicao(b"", "70000", acima_do_limite=True) == "(corpo de 70000 bytes, acima do limite: não gravado)"
+    assert (
+        conteudo_da_requisicao(b"", "70000", acima_do_limite=True)
+        == "(corpo de 70000 bytes, acima do limite: não gravado)"
+    )
     assert conteudo_da_requisicao(b"{}", None, acima_do_limite=False) == "{}"
 
 
@@ -72,11 +77,61 @@ def test_situacoes_da_requisicao_e_da_resposta(status: int, esperado: tuple[str,
     assert situacoes(status) == esperado
 
 
-def test_numero_formatado_e_rotas_sem_movimentacao() -> None:
-    assert numero_formatado(2026, 123) == "2026-000123"
-    assert numero_formatado(2027, 1_234_567) == "2027-1234567"
+def test_rotas_sem_movimentacao() -> None:
     assert not movimentar("/health/live") and not movimentar("/health/ready") and not movimentar("/metrics")
     assert movimentar("/api/v1/transformar") and movimentar("/nao-existe") and movimentar("/")
+
+
+def test_ulid_tem_26_caracteres_do_alfabeto_e_e_valido() -> None:
+    identificador = ulid.novo()
+
+    assert len(identificador) == 26 and ulid.valido(identificador)
+    assert re.fullmatch("[0-9A-HJKMNP-TV-Z]{26}", identificador)  # Crockford: sem I, L, O e U
+
+
+def test_ulid_carrega_a_hora_em_milissegundos() -> None:
+    momento = datetime(2026, 11, 13, 15, 30, 45, 123_000, tzinfo=UTC)
+
+    identificador = ulid.novo(momento)
+
+    assert ulid.momento(identificador) == momento
+    assert identificador.startswith("01")  # 2026 em milissegundos desde 1970
+
+
+def test_ulid_em_ordem_alfabetica_e_ordem_cronologica() -> None:
+    inicio = datetime(2026, 1, 1, tzinfo=UTC)
+    ids = [ulid.novo(inicio + timedelta(milliseconds=i * 7)) for i in range(200)]
+
+    assert ids == sorted(ids)
+
+
+def test_cem_mil_ulid_no_mesmo_milissegundo_nao_repetem() -> None:
+    momento = datetime.now(UTC)
+
+    assert len({ulid.novo(momento) for _ in range(100_000)}) == 100_000
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        None,
+        "",
+        "01JC4M7Z9Q8T2X5V6B3N0WYKH",  # 25 caracteres
+        "01JC4M7Z9Q8T2X5V6B3N0WYKHDX",  # 27 caracteres
+        "01JC4M7Z9Q8T2X5V6B3N0WYKHI",  # I não existe no alfabeto
+        "01jc4m7z9q8t2x5v6b3n0wykhd",  # minúsculas
+        "81JC4M7Z9Q8T2X5V6B3N0WYKHD",  # hora fora dos 48 bits
+    ],
+)
+def test_texto_que_nao_e_ulid_e_recusado(texto: object) -> None:
+    assert not ulid.valido(texto)
+
+
+def test_hora_fora_do_intervalo_e_recusada() -> None:
+    with pytest.raises(ValueError, match="48 bits"):
+        ulid.novo(datetime(1969, 12, 31, tzinfo=UTC))
+    with pytest.raises(ValueError, match="ULID"):
+        ulid.momento("nao e ulid")
 
 
 class DestinoFalso:

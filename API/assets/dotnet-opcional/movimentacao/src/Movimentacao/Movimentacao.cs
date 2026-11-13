@@ -4,29 +4,35 @@ using System.Text.RegularExpressions;
 
 namespace ProjetoApi.Movimentacao;
 
-/// <summary>Resposta da API para completar a linha da movimentação (conteúdo já mascarado e limitado).</summary>
+/// <summary>
+/// Uma requisição com chave de API válida: o que chegou, o que a API respondeu e, se a resposta foi um erro (4xx ou 5xx), os
+/// metadados do erro. Gravada de uma vez só, em segundo plano, depois da resposta: a chegada não depende do banco.
+/// </summary>
+/// <param name="RequisicaoId">ULID gerado na chegada (o mesmo que vai ao cliente no header X-Requisicao).</param>
 /// <param name="SituacaoRequisicao">OK = aceita; ER = recusada (4xx).</param>
 /// <param name="SituacaoResposta">OK = sucesso (2xx); ER = erro (4xx ou 5xx).</param>
-public sealed record RegistroDeResposta(
-    int Ano,
-    long Requisicao,
+/// <param name="Erro">Metadados do erro (sem corpo, sem dados pessoais); nulo quando a resposta não foi erro.</param>
+public sealed record RegistroDeMovimentacao(
+    string RequisicaoId,
+    string Metodo,
+    string Rota,
+    string? RequisicaoConteudo,
+    DateTimeOffset RequisicaoEm,
     int StatusHttp,
-    string? Conteudo,
+    string? RespostaConteudo,
+    DateTimeOffset RespostaEm,
     string SituacaoRequisicao,
-    string SituacaoResposta);
+    string SituacaoResposta,
+    RegistroDeErro? Erro);
 
 /// <summary>
-/// Movimentação: o que chegou à API e o que ela respondeu, na tabela movimentacao. A aplicação não tem acesso às
-/// tabelas: só executa a função/procedure que numera e grava a chegada e a que completa a linha com a resposta.
+/// Movimentação: o que chegou à API e o que ela respondeu, na tabela movimentacao (e o erro, na log_erros). A aplicação não tem
+/// acesso de leitura às tabelas: só insere. As duas tabelas são gravadas na mesma transação (o erro aponta para a movimentação).
 /// </summary>
 public interface IRepositorioDeMovimentacao
 {
-    /// <summary>Numera a requisição no ano e grava a chegada. Devolve (ano, requisicao).</summary>
-    Task<(int Ano, long Requisicao)> RegistrarRequisicaoAsync(
-        string metodo, string rota, string? conteudo, CancellationToken cancellationToken);
-
-    /// <summary>Completa as linhas da movimentação com as respostas (cada linha uma vez só).</summary>
-    Task RegistrarRespostasAsync(IReadOnlyList<RegistroDeResposta> respostas, CancellationToken cancellationToken);
+    /// <summary>Grava o lote: cada movimentação e, quando houver, o seu erro, numa única transação.</summary>
+    Task GravarAsync(IReadOnlyList<RegistroDeMovimentacao> registros, CancellationToken cancellationToken);
 }
 
 /// <summary>Regras da movimentação, as mesmas do template Python (app/movimentacao/regras.py).</summary>
@@ -78,8 +84,4 @@ public static partial class RegrasDeMovimentacao
         return !rota.StartsWith("/health/", StringComparison.OrdinalIgnoreCase)
             && !rota.StartsWith("/metrics", StringComparison.OrdinalIgnoreCase);
     }
-
-    /// <summary>Valor do header X-Requisicao: 2026-000123.</summary>
-    public static string NumeroFormatado(int ano, long requisicao) =>
-        string.Create(CultureInfo.InvariantCulture, $"{ano}-{requisicao:D6}");
 }

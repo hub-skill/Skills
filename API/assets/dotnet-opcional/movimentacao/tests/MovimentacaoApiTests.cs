@@ -15,20 +15,18 @@ using Xunit;
 namespace ProjetoApi.IntegrationTests;
 
 /// <summary>
-/// Movimentação: cada requisição com chave de API válida (menos /health e /metrics) é numerada na chegada e
-/// completada com a resposta; os erros vão para a log_erros com a chave. Sem banco: repositórios falsos.
+/// Movimentação: cada requisição com chave de API válida (menos /health e /metrics) ganha um ULID na chegada e é gravada, com a
+/// resposta e o erro (se houver), em segundo plano. Sem banco: repositório falso.
 /// </summary>
 public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
 {
     private const string Url = "/api/v1/transformar";
     private readonly MovimentacaoFactory _fabrica;
-    private readonly int _inicioDoTeste;
 
     public MovimentacaoApiTests(MovimentacaoFactory fabrica)
     {
         _fabrica = fabrica;
         _fabrica.Movimentacao.Limpar();
-        _inicioDoTeste = _fabrica.Movimentacao.TotalDeChegadas;
     }
 
     private static HttpClient Autenticado(MovimentacaoFactory fabrica)
@@ -44,43 +42,33 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
         return await Autenticado(_fabrica).PostAsync(new Uri(Url, UriKind.Relative), conteudo);
     }
 
-    private static string IdDaResposta(HttpResponseMessage resposta) => resposta.Headers.GetValues("X-Request-ID").Single();
-
-    private static async Task<string> RequestId(HttpResponseMessage resposta)
-    {
-        using var corpo = System.Text.Json.JsonDocument.Parse(await resposta.Content.ReadAsStringAsync());
-        return corpo.RootElement.GetProperty("request_id").GetString()!;
-    }
-
     [Fact]
-    public async Task Requisicao_com_sucesso_e_numerada_e_a_resposta_e_gravada()
+    public async Task Requisicao_com_sucesso_ganha_ulid_e_e_gravada_com_a_resposta()
     {
         var resposta = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "  ola  " });
 
         Assert.Equal(HttpStatusCode.OK, resposta.StatusCode);
-        var numero = MovimentacaoFalsa.NumeroDoHeader(resposta);
-        var chegada = _fabrica.Movimentacao.ChegadaDe(numero)!;
-        Assert.Equal(("POST", Url), (chegada.Metodo, chegada.Rota));
-        Assert.Contains("ola", chegada.Conteudo, StringComparison.Ordinal);
-
-        var gravada = await _fabrica.Movimentacao.EsperarRespostaAsync(numero);
-        Assert.Equal((MovimentacaoFalsa.Ano, numero, 200), (gravada.Ano, gravada.Requisicao, gravada.StatusHttp));
+        var id = MovimentacaoFalsa.IdDoHeader(resposta);
+        var gravada = await _fabrica.Movimentacao.EsperarAsync(id);
+        Assert.Equal(("POST", Url, 200), (gravada.Metodo, gravada.Rota, gravada.StatusHttp));
+        Assert.Contains("ola", gravada.RequisicaoConteudo, StringComparison.Ordinal);
         Assert.Equal(("OK", "OK"), (gravada.SituacaoRequisicao, gravada.SituacaoResposta));
-        Assert.Equal(await resposta.Content.ReadAsStringAsync(), gravada.Conteudo); // exatamente o que o cliente recebeu
+        Assert.Equal(await resposta.Content.ReadAsStringAsync(), gravada.RespostaConteudo); // exatamente o que o cliente recebeu
+        Assert.Null(gravada.Erro);
+        Assert.True(gravada.RespostaEm >= gravada.RequisicaoEm);
+        Assert.InRange((gravada.RequisicaoEm - Ulid.Momento(id)).TotalMilliseconds, -2, 2); // o ULID carrega a hora de chegada
     }
 
     [Fact]
     public async Task Cpf_e_mascarado_na_requisicao_e_na_resposta()
     {
         var resposta = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "cpf 529.982.247-25" });
-        var numero = MovimentacaoFalsa.NumeroDoHeader(resposta);
 
-        var chegada = _fabrica.Movimentacao.ChegadaDe(numero)!;
-        Assert.Contains("***.982.247-**", chegada.Conteudo, StringComparison.Ordinal);
-        Assert.DoesNotContain("529.982.247-25", chegada.Conteudo, StringComparison.Ordinal);
-        var gravada = await _fabrica.Movimentacao.EsperarRespostaAsync(numero);
-        Assert.Contains("***.982.247-**", gravada.Conteudo, StringComparison.Ordinal);
-        Assert.DoesNotContain("529.982.247-25", gravada.Conteudo, StringComparison.Ordinal);
+        var gravada = await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(resposta));
+        Assert.Contains("***.982.247-**", gravada.RequisicaoConteudo, StringComparison.Ordinal);
+        Assert.DoesNotContain("529.982.247-25", gravada.RequisicaoConteudo, StringComparison.Ordinal);
+        Assert.Contains("***.982.247-**", gravada.RespostaConteudo, StringComparison.Ordinal);
+        Assert.DoesNotContain("529.982.247-25", gravada.RespostaConteudo, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -88,15 +76,16 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
     {
         foreach (var corpo in new[] { "{nao e json", "[\"lista\"]", "<xml><a>1</a></xml>" })
         {
-            var numero = MovimentacaoFalsa.NumeroDoHeader(await EnviarAsync(corpo));
-            Assert.Equal(corpo, _fabrica.Movimentacao.ChegadaDe(numero)!.Conteudo);
+            var gravada = await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(await EnviarAsync(corpo)));
+            Assert.Equal(corpo, gravada.RequisicaoConteudo);
         }
 
         // Byte inválido em UTF-8 não derruba a gravação: vira U+FFFD.
         using var invalido = new ByteArrayContent([.. "texto solto "u8, 0xFF, .. " fim"u8]);
         invalido.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         var resposta = await Autenticado(_fabrica).PostAsync(new Uri(Url, UriKind.Relative), invalido);
-        Assert.Equal("texto solto � fim", _fabrica.Movimentacao.ChegadaDe(MovimentacaoFalsa.NumeroDoHeader(resposta))!.Conteudo);
+        var ultima = await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(resposta));
+        Assert.Equal("texto solto � fim", ultima.RequisicaoConteudo);
     }
 
     [Theory]
@@ -115,12 +104,12 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
         };
 
         Assert.Equal(status, (int)resposta.StatusCode);
-        var gravada = await _fabrica.Movimentacao.EsperarRespostaAsync(MovimentacaoFalsa.NumeroDoHeader(resposta));
+        var gravada = await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(resposta));
         Assert.Equal((status, situacaoRequisicao, situacaoResposta), (gravada.StatusHttp, gravada.SituacaoRequisicao, gravada.SituacaoResposta));
     }
 
     [Fact]
-    public async Task Erro_nao_tratado_entra_na_movimentacao_com_os_cabecalhos_da_api()
+    public async Task Erro_nao_tratado_entra_na_movimentacao_com_os_cabecalhos_da_api_e_o_erro_junto()
     {
         using var comErro = new MovimentacaoFactory(servico: new ServicoFalso(lancar: new InvalidOperationException("detalhe interno: senha=abc")));
         var resposta = await Autenticado(comErro).PostAsJsonAsync(Url, new { texto = "ola" });
@@ -128,11 +117,11 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
         Assert.Equal(HttpStatusCode.InternalServerError, resposta.StatusCode);
         Assert.True(resposta.Headers.Contains("X-Requisicao") && resposta.Headers.Contains("X-Request-ID"));
         Assert.Equal("nosniff", resposta.Headers.GetValues("X-Content-Type-Options").Single());
-        var gravada = await comErro.Movimentacao.EsperarRespostaAsync(MovimentacaoFalsa.NumeroDoHeader(resposta));
+        var gravada = await comErro.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(resposta));
         Assert.Equal((500, "OK", "ER"), (gravada.StatusHttp, gravada.SituacaoRequisicao, gravada.SituacaoResposta));
-        Assert.DoesNotContain("senha", gravada.Conteudo, StringComparison.Ordinal);
+        Assert.DoesNotContain("senha", gravada.RespostaConteudo, StringComparison.Ordinal);
 
-        var erro = await comErro.Erros.EsperarAsync(await RequestId(resposta));
+        var erro = Assert.IsType<RegistroDeErro>(gravada.Erro);
         Assert.Equal(("erro_interno", "System.InvalidOperationException"), (erro.Codigo, erro.TipoExcecao));
         Assert.DoesNotContain("senha", erro.ToString(), StringComparison.Ordinal);
     }
@@ -144,7 +133,7 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
     [InlineData("GET", Url, null)]
     public async Task Sem_chave_valida_nao_entra_na_movimentacao(string metodo, string rota, string? chave)
     {
-        // Varreduras e chamadas sem chave recebem 401 e não gravam nada: nem movimentação, nem log de erros.
+        // Varreduras e chamadas sem chave recebem 401 e não gravam nada.
         var cliente = _fabrica.CreateClient();
         if (chave is not null)
         {
@@ -163,14 +152,15 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
 
         // Uma chamada de marcação, já com chave: quando ela é gravada, qualquer gravação anterior já teria chegado.
         var marca = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "ola" });
-        await _fabrica.Movimentacao.EsperarRespostaAsync(MovimentacaoFalsa.NumeroDoHeader(marca));
-        Assert.Equal(1, _fabrica.Movimentacao.TotalDeChegadas - _inicioDoTeste);
-        Assert.DoesNotContain(_fabrica.Erros.Registros, r => r.RequestId == IdDaResposta(resposta));
+        await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(marca));
+        Assert.DoesNotContain(_fabrica.Movimentacao.Registros, r => r.Erro?.RequestId == resposta.Headers.GetValues("X-Request-ID").Single());
+        Assert.DoesNotContain(_fabrica.Movimentacao.Registros, r => r.StatusHttp == 401);
     }
 
     [Fact]
     public async Task Health_e_metrics_nao_entram_na_movimentacao()
     {
+        var antes = _fabrica.Movimentacao.Registros.Count;
         var cliente = _fabrica.CreateClient();
         foreach (var rota in new[] { "/health/live", "/health/ready", "/metrics" })
         {
@@ -179,32 +169,24 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
             Assert.False(resposta.Headers.Contains("X-Requisicao"));
         }
 
-        Assert.Equal(_inicioDoTeste, _fabrica.Movimentacao.TotalDeChegadas);
+        Assert.Equal(antes, _fabrica.Movimentacao.Registros.Count);
     }
 
     [Fact]
-    public async Task Cada_erro_vai_para_o_log_com_a_chave_da_sua_movimentacao()
+    public async Task Cada_erro_e_gravado_junto_com_a_sua_movimentacao_sem_o_corpo()
     {
         var primeira = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "   " });
         var segunda = await Autenticado(_fabrica).GetAsync(new Uri("/nao-existe", UriKind.Relative));
 
         foreach (var resposta in new[] { primeira, segunda })
         {
-            var registro = await _fabrica.Erros.EsperarAsync(await RequestId(resposta));
-            Assert.Equal((MovimentacaoFalsa.Ano, MovimentacaoFalsa.NumeroDoHeader(resposta)), (registro.Ano, registro.Requisicao));
-            Assert.True(registro.DuracaoMs >= 0);
-            Assert.DoesNotContain("texto", registro.ToString(), StringComparison.Ordinal); // nunca o corpo da requisição
+            var gravada = await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(resposta));
+            var erro = Assert.IsType<RegistroDeErro>(gravada.Erro);
+            Assert.Equal(resposta.Headers.GetValues("X-Request-ID").Single(), erro.RequestId);
+            Assert.Equal(gravada.StatusHttp, erro.Status);
+            Assert.True(erro.DuracaoMs >= 0);
+            Assert.DoesNotContain("texto", erro.ToString(), StringComparison.Ordinal); // nunca o corpo da requisição
         }
-    }
-
-    [Fact]
-    public async Task Sucesso_nao_vai_para_o_log_de_erros()
-    {
-        var resposta = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "ola" });
-        await _fabrica.Movimentacao.EsperarRespostaAsync(MovimentacaoFalsa.NumeroDoHeader(resposta));
-
-        // Os registros do log são pelo request_id: erros atrasados de outros testes não contam.
-        Assert.DoesNotContain(_fabrica.Erros.Registros, r => r.RequestId == IdDaResposta(resposta));
     }
 
     [Fact]
@@ -217,10 +199,9 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
         var bloqueada = await cliente.PostAsJsonAsync(Url, new { texto = "ola" });
 
         Assert.Equal(HttpStatusCode.TooManyRequests, bloqueada.StatusCode);
-        var gravada = await limitada.Movimentacao.EsperarRespostaAsync(MovimentacaoFalsa.NumeroDoHeader(bloqueada));
+        var gravada = await limitada.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(bloqueada));
         Assert.Equal(("ER", "ER"), (gravada.SituacaoRequisicao, gravada.SituacaoResposta));
-        var erro = await limitada.Erros.EsperarAsync(await RequestId(bloqueada));
-        Assert.Equal("limite_excedido", erro.Codigo);
+        Assert.Equal("limite_excedido", gravada.Erro?.Codigo);
     }
 
     [Fact]
@@ -230,46 +211,49 @@ public sealed class MovimentacaoApiTests : IClassFixture<MovimentacaoFactory>
         var resposta = await EnviarAsync(corpo);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, resposta.StatusCode);
-        var conteudo = _fabrica.Movimentacao.ChegadaDe(MovimentacaoFalsa.NumeroDoHeader(resposta))!.Conteudo;
+        var conteudo = (await _fabrica.Movimentacao.EsperarAsync(MovimentacaoFalsa.IdDoHeader(resposta))).RequisicaoConteudo;
         Assert.Contains(corpo.Length.ToString(CultureInfo.InvariantCulture), conteudo, StringComparison.Ordinal);
         Assert.DoesNotContain("1111", conteudo, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task Sem_numero_a_requisicao_segue_e_o_erro_nao_e_gravado()
+    public async Task Banco_fora_ou_lento_na_gravacao_nao_afeta_a_resposta()
     {
-        _fabrica.Movimentacao.NumeracaoFalha = true;
-        var ok = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "ola" });
-        var erro = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "   " });
-        _fabrica.Movimentacao.NumeracaoFalha = false;
+        // Banco lento: a gravação fica presa num portão (sem cronômetro: o teste não depende da velocidade da máquina).
+        using var lenta = new MovimentacaoFactory();
+        lenta.Movimentacao.Portao = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        Assert.Equal((HttpStatusCode.OK, HttpStatusCode.UnprocessableEntity), (ok.StatusCode, erro.StatusCode));
-        Assert.False(ok.Headers.Contains("X-Requisicao") || erro.Headers.Contains("X-Requisicao"));
-        Assert.Equal(_inicioDoTeste, _fabrica.Movimentacao.TotalDeChegadas);
+        var resposta = await Autenticado(lenta).PostAsJsonAsync(Url, new { texto = "ola" });
 
-        // Marcação, já com número: quando ela é gravada, qualquer gravação anterior já teria chegado.
-        var marca = await Autenticado(_fabrica).GetAsync(new Uri("/nao-existe", UriKind.Relative));
-        await _fabrica.Erros.EsperarAsync(await RequestId(marca));
-        Assert.DoesNotContain(_fabrica.Erros.Registros, r => r.RequestId == IdDaResposta(ok) || r.RequestId == IdDaResposta(erro));
+        Assert.Equal(HttpStatusCode.OK, resposta.StatusCode); // a resposta saiu com a gravação ainda presa
+        var id = MovimentacaoFalsa.IdDoHeader(resposta); // o número nasce na API: sempre existe
+        Assert.DoesNotContain(lenta.Movimentacao.Registros, r => r.RequisicaoId == id);
+        lenta.Movimentacao.Portao.SetResult();
+        Assert.Equal(id, (await lenta.Movimentacao.EsperarAsync(id)).RequisicaoId); // solto o portão, a gravação acontece
+
+        // Banco fora: a gravação falha, e a resposta continua saindo normalmente.
+        using var fora = new MovimentacaoFactory();
+        fora.Movimentacao.Falha = true;
+        var semBanco = await Autenticado(fora).PostAsJsonAsync(Url, new { texto = "ola" });
+        Assert.Equal(HttpStatusCode.OK, semBanco.StatusCode);
+        Assert.True(Ulid.Valido(semBanco.Headers.GetValues("X-Requisicao").Single()));
     }
 
     [Fact]
-    public async Task Banco_lento_na_chegada_nao_segura_a_requisicao_alem_do_prazo()
+    public async Task Cada_requisicao_tem_um_ulid_proprio()
     {
-        _fabrica.Movimentacao.NumeracaoAtraso = TimeSpan.FromSeconds(10);
+        var ids = new List<string>();
+        for (var i = 0; i < 30; i++)
+        {
+            ids.Add(MovimentacaoFalsa.IdDoHeader(await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "ola" })));
+        }
 
-        var cronometro = System.Diagnostics.Stopwatch.StartNew();
-        var resposta = await Autenticado(_fabrica).PostAsJsonAsync(Url, new { texto = "ola" });
-        cronometro.Stop();
-
-        Assert.Equal(HttpStatusCode.OK, resposta.StatusCode);
-        Assert.False(resposta.Headers.Contains("X-Requisicao"));
-        Assert.True(cronometro.Elapsed < TimeSpan.FromSeconds(5), $"demorou {cronometro.Elapsed}");
-        Assert.Equal(_inicioDoTeste, _fabrica.Movimentacao.TotalDeChegadas); // a gravação lenta foi abandonada
+        Assert.Equal(30, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(ids, id => Assert.InRange((DateTimeOffset.UtcNow - Ulid.Momento(id)).TotalSeconds, -1, 30));
     }
 }
 
-/// <summary>Sobe a API em memória com a movimentação e o log de erros falsos: os testes nunca tocam o banco.</summary>
+/// <summary>Sobe a API em memória com a movimentação falsa: os testes nunca tocam o banco.</summary>
 public sealed class MovimentacaoFactory : WebApplicationFactory<Program>
 {
     public const string Chave = "chave-de-teste-com-pelo-menos-32-caracteres";
@@ -290,8 +274,6 @@ public sealed class MovimentacaoFactory : WebApplicationFactory<Program>
 
     public MovimentacaoFalsa Movimentacao { get; } = new();
 
-    public DestinoDeErrosFalso Erros { get; } = new();
-
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
@@ -305,12 +287,11 @@ public sealed class MovimentacaoFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(servicos =>
         {
+            // Troque também os repositórios reais de consulta (módulo bancos), se a API os tiver.
             servicos.RemoveAll<IRepositorioDeMovimentacao>();
             servicos.AddSingleton<IRepositorioDeMovimentacao>(Movimentacao);
-            servicos.RemoveAll<IRepositorioDeErros>();
-            servicos.AddSingleton<IRepositorioDeErros>(Erros);
             servicos.RemoveAll<MovimentacaoOpcoes>();
-            servicos.AddSingleton(new MovimentacaoOpcoes(Movimentacao.PrazoParaNumerar, 64 * 1024));
+            servicos.AddSingleton(new MovimentacaoOpcoes(64 * 1024));
             if (_servico is not null)
             {
                 servicos.RemoveAll<ITransformacaoService>();
@@ -320,123 +301,64 @@ public sealed class MovimentacaoFactory : WebApplicationFactory<Program>
     }
 }
 
-/// <summary>
-/// Movimentação falsa: numera na memória (ano 2026) e guarda a chegada e a resposta de cada requisição. A numeração
-/// nunca recomeça: respostas atrasadas de um teste anterior não colidem com as do seguinte (cada teste acha a sua
-/// pelo header X-Requisicao).
-/// </summary>
+/// <summary>Repositório falso: guarda as movimentações na memória; pode falhar ou demorar, como um banco com problema.</summary>
 public sealed class MovimentacaoFalsa : IRepositorioDeMovimentacao
 {
-    public const int Ano = 2026;
+    private readonly ConcurrentDictionary<string, RegistroDeMovimentacao> _registros = new();
 
-    private readonly ConcurrentDictionary<long, Chegada> _chegadas = new();
-    private readonly ConcurrentDictionary<long, RegistroDeResposta> _respostas = new();
-    private long _ultimo;
+    /// <summary>Simula o banco fora: a gravação falha.</summary>
+    public bool Falha { get; set; }
 
-    public sealed record Chegada(string Metodo, string Rota, string? Conteudo);
+    /// <summary>Simula o banco lento: enquanto o portão não for liberado, a gravação espera.</summary>
+    public TaskCompletionSource? Portao { get; set; }
 
-    /// <summary>Simula o banco fora na chegada: a numeração falha.</summary>
-    public bool NumeracaoFalha { get; set; }
-
-    /// <summary>Simula o banco lento na chegada.</summary>
-    public TimeSpan NumeracaoAtraso { get; set; }
-
-    /// <summary>Prazo que a API espera pelo número (curto, para o teste do banco lento não demorar).</summary>
-    public TimeSpan PrazoParaNumerar { get; } = TimeSpan.FromMilliseconds(300);
-
-    public int TotalDeChegadas => _chegadas.Count;
+    public IReadOnlyList<RegistroDeMovimentacao> Registros => [.. _registros.Values];
 
     public void Limpar()
     {
-        NumeracaoFalha = false;
-        NumeracaoAtraso = TimeSpan.Zero;
+        Falha = false;
+        Portao = null;
     }
 
-    public async Task<(int Ano, long Requisicao)> RegistrarRequisicaoAsync(
-        string metodo, string rota, string? conteudo, CancellationToken cancellationToken)
+    public async Task GravarAsync(IReadOnlyList<RegistroDeMovimentacao> registros, CancellationToken cancellationToken)
     {
-        if (NumeracaoFalha)
+        if (Falha)
         {
             throw new InvalidOperationException("banco fora");
         }
 
-        if (NumeracaoAtraso > TimeSpan.Zero)
+        if (Portao is { } portao)
         {
-            await Task.Delay(NumeracaoAtraso, cancellationToken);
+            await portao.Task.WaitAsync(cancellationToken);
         }
 
-        var numero = Interlocked.Increment(ref _ultimo);
-        _chegadas[numero] = new Chegada(metodo, rota, conteudo);
-        return (Ano, numero);
-    }
-
-    public Task RegistrarRespostasAsync(IReadOnlyList<RegistroDeResposta> respostas, CancellationToken cancellationToken)
-    {
-        foreach (var r in respostas)
-        {
-            _respostas[r.Requisicao] = r;
-        }
-
-        return Task.CompletedTask;
-    }
-
-    public Chegada? ChegadaDe(long requisicao) => _chegadas.GetValueOrDefault(requisicao);
-
-    /// <summary>Espera (até 5 s) a resposta gravada desta requisição: a gravação é assíncrona.</summary>
-    public async Task<RegistroDeResposta> EsperarRespostaAsync(long requisicao)
-    {
-        using var prazo = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-        while (true)
-        {
-            if (_respostas.TryGetValue(requisicao, out var resposta))
-            {
-                return resposta;
-            }
-
-            await Task.Delay(10, prazo.Token);
-        }
-    }
-
-    /// <summary>Número da requisição a partir do header X-Requisicao (ex.: 2026-000123 vira 123).</summary>
-    public static long NumeroDoHeader(HttpResponseMessage resposta)
-    {
-        ArgumentNullException.ThrowIfNull(resposta);
-        var partes = resposta.Headers.GetValues(MovimentacaoMiddleware.Header).Single().Split('-');
-        Assert.Equal(["2026", partes[1]], partes);
-        return long.Parse(partes[1], CultureInfo.InvariantCulture);
-    }
-}
-
-/// <summary>Destino falso do log de erros: guarda os registros.</summary>
-public sealed class DestinoDeErrosFalso : IRepositorioDeErros
-{
-    private readonly ConcurrentQueue<RegistroDeErro> _registros = new();
-
-    public IReadOnlyList<RegistroDeErro> Registros => [.. _registros];
-
-    public Task GravarAsync(IReadOnlyList<RegistroDeErro> registros, CancellationToken cancellationToken)
-    {
         foreach (var r in registros)
         {
-            _registros.Enqueue(r);
+            _registros[r.RequisicaoId] = r;
         }
-
-        return Task.CompletedTask;
     }
 
-    /// <summary>Espera (até 5 s) chegar o registro com este request_id: a gravação é assíncrona.</summary>
-    public async Task<RegistroDeErro> EsperarAsync(string requestId)
+    /// <summary>Espera (até 5 s) a movimentação gravada desta requisição: a gravação é em segundo plano.</summary>
+    public async Task<RegistroDeMovimentacao> EsperarAsync(string requisicaoId)
     {
         using var prazo = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         while (true)
         {
-            var achado = _registros.FirstOrDefault(r => r.RequestId == requestId);
-            if (achado is not null)
+            if (_registros.TryGetValue(requisicaoId, out var registro))
             {
-                return achado;
+                return registro;
             }
 
             await Task.Delay(10, prazo.Token);
         }
+    }
+
+    /// <summary>ULID da requisição a partir do header X-Requisicao.</summary>
+    public static string IdDoHeader(HttpResponseMessage resposta)
+    {
+        ArgumentNullException.ThrowIfNull(resposta);
+        var id = resposta.Headers.GetValues(MovimentacaoMiddleware.Header).Single();
+        Assert.True(Ulid.Valido(id), $"X-Requisicao não é um ULID: {id}");
+        return id;
     }
 }

@@ -36,6 +36,8 @@ EXPOSE 8080
 # --worker-tmp-dir /dev/shm: o gunicorn escreve o heartbeat do worker; com readOnlyRootFilesystem o /tmp
 # vem de um emptyDir no manifesto, e /dev/shm evita disco.
 # No Linux o loop padrão do uvicorn já funciona com o psycopg async (o --loop do Windows não é preciso).
+# --no-control-socket: o gunicorn 25+ tenta criar um socket de controle em ~/.gunicorn; o usuário da imagem não tem home e
+# o log mostraria "Control server error: Permission denied" a cada subida (sem efeito na API, mas é ruído).
 CMD ["gunicorn", "app.main:app", "-k", "uvicorn_worker.UvicornWorker", \
      "-b", "0.0.0.0:8080", "--timeout", "15", "--graceful-timeout", "20", "--keep-alive", "5", \
-     "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-"]
+     "--worker-tmp-dir", "/dev/shm", "--access-logfile", "-", "--no-control-socket"]

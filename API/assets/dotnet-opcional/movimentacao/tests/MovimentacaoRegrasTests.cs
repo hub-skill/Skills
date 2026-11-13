@@ -56,15 +56,77 @@ public sealed class MovimentacaoRegrasTests
         Assert.Equal((requisicao, resposta), RegrasDeMovimentacao.Situacoes(status));
 
     [Fact]
-    public void Numero_formatado_e_rotas_sem_movimentacao()
+    public void Rotas_sem_movimentacao()
     {
-        Assert.Equal("2026-000123", RegrasDeMovimentacao.NumeroFormatado(2026, 123));
-        Assert.Equal("2027-1234567", RegrasDeMovimentacao.NumeroFormatado(2027, 1_234_567));
         Assert.False(RegrasDeMovimentacao.Movimentar("/health/live"));
         Assert.False(RegrasDeMovimentacao.Movimentar("/health/ready"));
         Assert.False(RegrasDeMovimentacao.Movimentar("/metrics"));
         Assert.True(RegrasDeMovimentacao.Movimentar("/api/v1/triagem"));
         Assert.True(RegrasDeMovimentacao.Movimentar("/nao-existe"));
         Assert.True(RegrasDeMovimentacao.Movimentar("/"));
+    }
+}
+
+/// <summary>ULID: identificador da requisição, gerado na API (sem banco).</summary>
+public sealed class UlidTests
+{
+    [Fact]
+    public void Tem_26_caracteres_do_alfabeto_e_e_valido()
+    {
+        var id = Ulid.Novo();
+
+        Assert.Equal(26, id.Length);
+        Assert.True(Ulid.Valido(id));
+        Assert.Matches("^[0-9A-HJKMNP-TV-Z]{26}$", id); // Crockford: sem I, L, O e U
+    }
+
+    [Fact]
+    public void Carrega_a_hora_em_milissegundos()
+    {
+        var momento = new DateTimeOffset(2026, 11, 13, 15, 30, 45, 123, TimeSpan.Zero);
+
+        var id = Ulid.Novo(momento);
+
+        Assert.Equal(momento, Ulid.Momento(id));
+        Assert.StartsWith("01", id, StringComparison.Ordinal); // 2026 em milissegundos desde 1970
+    }
+
+    [Fact]
+    public void Ordem_alfabetica_e_ordem_cronologica()
+    {
+        var inicio = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var ids = Enumerable.Range(0, 200).Select(i => Ulid.Novo(inicio.AddMilliseconds(i * 7))).ToList();
+
+        Assert.Equal(ids, ids.Order(StringComparer.Ordinal).ToList());
+    }
+
+    [Fact]
+    public void Cem_mil_ids_no_mesmo_milissegundo_nao_repetem()
+    {
+        var momento = DateTimeOffset.UtcNow;
+
+        var ids = Enumerable.Range(0, 100_000).Select(_ => Ulid.Novo(momento)).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(100_000, ids.Count);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("01JC4M7Z9Q8T2X5V6B3N0WYKH")] // 25 caracteres
+    [InlineData("01JC4M7Z9Q8T2X5V6B3N0WYKHDX")] // 27 caracteres
+    [InlineData("01JC4M7Z9Q8T2X5V6B3N0WYKHI")] // I não existe no alfabeto
+    [InlineData("01jc4m7z9q8t2x5v6b3n0wykhd")] // minúsculas
+    [InlineData("81JC4M7Z9Q8T2X5V6B3N0WYKHD")] // hora fora dos 48 bits
+    public void Texto_que_nao_e_ulid_e_recusado(string? texto)
+    {
+        Assert.False(Ulid.Valido(texto));
+    }
+
+    [Fact]
+    public void Hora_fora_do_intervalo_e_recusada()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => Ulid.Novo(DateTimeOffset.UnixEpoch.AddMilliseconds(-1)));
+        Assert.Throws<ArgumentException>(() => Ulid.Momento("nao e ulid"));
     }
 }

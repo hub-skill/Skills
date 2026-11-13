@@ -26,6 +26,7 @@ as duas stacks.
 - `WEB_CONCURRENCY=1` (o gunicorn lê essa variável): um processo por container no Kubernetes. Fora do Kubernetes
   (VM, `docker run`), suba para o número de núcleos.
 - `--worker-tmp-dir /dev/shm` e `PYTHONDONTWRITEBYTECODE=1`: funcionam com `readOnlyRootFilesystem`.
+- `--no-control-socket`: o gunicorn 25+ cria um socket de controle em `~/.gunicorn`; o usuário da imagem não tem home e o log mostra `Control server error: Permission denied` (sem efeito na API; achado em 13/11/2026).
 - No Linux o loop padrão do uvicorn já é compatível com o psycopg async: o `--loop asyncio:SelectorEventLoop`
   só é exigido no Windows.
 - `ALLOWED_HOSTS` precisa incluir `localhost` (as probes mandam esse Host) e o nome do Service.

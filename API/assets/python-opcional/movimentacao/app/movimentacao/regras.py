@@ -6,7 +6,10 @@ Validadas no Motor de Crédito (Python e .NET, com PostgreSQL e Oracle reais) e 
 import re
 
 LIMITE_DO_CONTEUDO = 32 * 1024  # caracteres; acima disso o conteúdo é cortado, com aviso no fim
-ROTAS_SEM_MOVIMENTACAO = ("/health/", "/metrics")  # sondas e coleta de métricas: chamadas a cada poucos segundos
+ROTAS_SEM_MOVIMENTACAO = (
+    "/health/",
+    "/metrics",
+)  # sondas e coleta de métricas: chamadas a cada poucos segundos
 
 # CPF com ou sem pontuação, sem dígito colado antes ou depois (um CNPJ de 14 dígitos não casa).
 _CPF = re.compile(r"(?<!\d)\d{3}\.?(\d{3})\.?(\d{3})-?\d{2}(?!\d)")
@@ -45,8 +48,3 @@ def situacoes(status_http: int) -> tuple[str, str]:
 
 def movimentar(rota: str) -> bool:
     return not rota.startswith(ROTAS_SEM_MOVIMENTACAO)
-
-
-def numero_formatado(ano: int, requisicao: int) -> str:
-    """Valor do header X-Requisicao: 2026-000123."""
-    return f"{ano}-{requisicao:06d}"
