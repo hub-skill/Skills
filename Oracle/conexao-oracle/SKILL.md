@@ -1,6 +1,6 @@
 ---
 name: conexao-oracle
-description: ConexaoOracle – conecta aplicações Python (FastAPI, scripts, ETL) ao Oracle Database com o driver python-oracledb em modo thin. Use sempre que o usuário quiser conectar, testar ou configurar acesso a um banco Oracle, montar string de conexão/DSN, ler o tnsnames.ora, escolher entre CDB e PDB (XE x XEPDB1), criar pool de conexões, colocar credenciais Oracle no .env, ou diagnosticar erros ORA-/DPY- de conexão (ORA-01017, ORA-12514, ORA-12541), mesmo que ele não cite "python-oracledb". Para criar ou nomear tabelas e sinônimos, use junto a skill oracle-naming-sinonimos. Não use para PostgreSQL, MySQL ou SQL Server.
+description: ConexaoOracle – conecta aplicações Python (FastAPI, scripts, ETL) ao Oracle Database com o driver python-oracledb em modo thin. Use sempre que o usuário quiser conectar, testar ou configurar acesso a um banco Oracle, montar string de conexão/DSN, ler o tnsnames.ora, escolher entre CDB e PDB (XE x XEPDB1), criar pool de conexões, colocar credenciais Oracle no .env, ou diagnosticar erros ORA-/DPY- de conexão (ORA-01017, ORA-12514, ORA-12541), mesmo que ele não cite "python-oracledb". Para criar ou nomear tabelas e sinônimos, use junto a skill oracle-naming-sinonimos. Para APIs C# (.NET) com ODP.NET, use as lições de references/dotnet.md. Não use para PostgreSQL, MySQL ou SQL Server.
 ---
 
 # ConexaoOracle: Python + Oracle Database
@@ -87,7 +87,7 @@ ORACLE_CALL_TIMEOUT_MS=10000
 
 ## 6. Código
 
-O padrão completo para FastAPI está em `references/fastapi.md`: Settings, pool no lifespan, dependência por requisição, health check e testes. Leia esse arquivo quando for escrever código de aplicação. Em resumo:
+Para **C# (.NET, ODP.NET)**, leia `references/dotnet.md` (as lições do driver; o código pronto está no módulo `bancos` da skill criar-api). O padrão completo para FastAPI está em `references/fastapi.md`: Settings, pool no lifespan, dependência por requisição, health check e testes. Leia esse arquivo quando for escrever código de aplicação. Em resumo:
 
 - **Um pool por processo**, criado na inicialização e fechado no desligamento. Abrir uma conexão por requisição é lento e esgota o banco.
 - **Bind variables sempre** (`:cpf`, `:id`). Nunca monte SQL concatenando ou com f-string: é injeção de SQL e também impede o Oracle de reaproveitar o plano de execução.

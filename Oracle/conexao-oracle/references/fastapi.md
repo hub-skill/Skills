@@ -243,3 +243,7 @@ create user motor_credito identified by "<definir fora do chat>"
 grant create session, create table, create sequence, create view to motor_credito;
 -- leitura de tabelas de outro schema: grant objeto a objeto + sinônimo (skill oracle-naming-sinonimos)
 ```
+
+## Lições vindas da skill criar-api (CLOB)
+
+- python-oracledb: um `str` não vira CLOB como parâmetro de `callproc` (`DPY-3013`; acima de 32767 bytes nem como VARCHAR2). Use `await conn.createlob(oracledb.DB_TYPE_CLOB, texto)`.
