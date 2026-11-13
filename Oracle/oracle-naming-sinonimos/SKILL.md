@@ -71,7 +71,7 @@ Sinônimos não recebem prefixo. O objetivo é que a consulta fique natural: `SE
 - CPF, CNPJ e documentos: sempre **`VARCHAR2(20)`**. Nunca `CHAR(11)`/`CHAR(14)` nem `NUMBER`: tipos numéricos perdem zeros à esquerda, e tamanho fixo não aceita máscara nem o CNPJ alfanumérico.
 - `NUMBER(p,s)` para decimais e inteiros. Para inteiros de identidade, use `NUMBER`.
 - `DATE` já carrega data e hora. Use `TIMESTAMP` quando precisar de frações de segundo.
-- `TIMESTAMP WITH TIME ZONE` quando o fuso horário importa.
+- **Instante** ("quando aconteceu": carga, criação, atualização, auditoria): **`TIMESTAMP WITH TIME ZONE`** com `DEFAULT SYSTIMESTAMP`. `TIMESTAMP` sem fuso guarda a hora de parede do servidor do banco: quem lê de outro fuso (um container em UTC, por exemplo) mostra a hora errada, sem aviso (visto em 12/11/2026: `carregado_em` 3 horas errado numa API em container). `TIMESTAMP` sem fuso só para horário de parede sem instante definido. Não dá para trocar o tipo de uma coluna que já tem dados: esvazie a tabela ou crie a coluna certa desde o início.
 - `CLOB` para textos longos e `BLOB` para binários. Evite-os em colunas consultadas com frequência.
 - Chaves primárias: `NUMBER GENERATED ALWAYS AS IDENTITY` (Oracle 12c ou superior).
 
@@ -85,8 +85,8 @@ CREATE TABLE academico.alunos (
     data_nascimento   DATE           NOT NULL,
     email             VARCHAR2(255),
     situacao          VARCHAR2(20)   DEFAULT 'ATIVO' NOT NULL,
-    criado_em         TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
-    atualizado_em     TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
+    criado_em         TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
+    atualizado_em     TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
 
     CONSTRAINT pk_alunos            PRIMARY KEY (id),
     CONSTRAINT uk_alunos_cpf        UNIQUE (cpf),
@@ -143,6 +143,7 @@ SELECT synonym_name, table_owner, table_name
 - [ ] Nome dentro do limite de bytes da versão do Oracle
 - [ ] Restrições e índices com prefixo padrão
 - [ ] Tipos `VARCHAR2`, `NUMBER`, `DATE` ou `TIMESTAMP` com tamanho definido
+- [ ] Instantes (criação, carga, auditoria) em `TIMESTAMP WITH TIME ZONE`, não em `TIMESTAMP`
 - [ ] CPF, CNPJ e documentos em `VARCHAR2(20)`
 - [ ] `COMMENT ON` para tabela e colunas
 - [ ] Sinônimo privado criado e `GRANT` emitido para o usuário
